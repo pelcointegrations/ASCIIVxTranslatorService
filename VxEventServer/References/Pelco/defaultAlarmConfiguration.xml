@@ -1,0 +1,31 @@
+﻿<AlarmConfiguration>
+  <Alarm>
+	<Name>Alarm 1</Name>
+	<Number>1</Number>
+	<SourceDeviceId>USE_INTEGRATION_ID</SourceDeviceId>	
+	<Situation>
+		<AlarmState>1</AlarmState>
+		<Type>external/ASCII/ASCIIAlarm_active</Type>
+		<Property>
+			<Key>1</Key>
+			<Value>uuid1</Value>
+		</Property>
+		<Property>
+			<Key>alarm_name</Key>
+			<Value>Alarm 1</Value>
+		</Property>
+	</Situation>
+	<Situation>
+		<AlarmState>0</AlarmState>
+		<Type>external/ASCII/ASCIIAlarm_inactive</Type>
+		<Property>
+			<Key>0</Key>
+			<Value>uuid1</Value>
+		</Property>
+		<Property>
+			<Key>alarm_name</Key>
+			<Value>Alarm 1</Value>
+		</Property>
+	</Situation>
+  </Alarm>  
+</AlarmConfiguration>

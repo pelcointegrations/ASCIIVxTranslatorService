@@ -1,0 +1,24 @@
+﻿<CustomSituations>
+  <CustomSituation>
+	<SituationType>external/ASCII/ASCIIAlarm_active</SituationType>
+	<Name>Ascii Alarm Active</Name>
+	<Severity>1</Severity>
+	<Log>1</Log>
+	<Notify>1</Notify>
+	<DisplayBanner>1</DisplayBanner>
+	<Audible>1</Audible>
+	<AckNeeded>0</AckNeeded>
+	<AutoAcknowledge>10</AutoAcknowledge>	
+  </CustomSituation>
+  <CustomSituation>
+	<SituationType>external/ASCII/ASCIIAlarm_inactive</SituationType>
+	<Name>Ascii Alarm InActive</Name>
+	<Severity>1</Severity>
+	<Log>1</Log>
+	<Notify>1</Notify>
+	<DisplayBanner>1</DisplayBanner>
+	<Audible>1</Audible>
+	<AckNeeded>0</AckNeeded>
+	<AutoAcknowledge>10</AutoAcknowledge>		
+  </CustomSituation>
+</CustomSituations>

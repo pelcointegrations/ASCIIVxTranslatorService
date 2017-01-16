@@ -1,0 +1,19 @@
+<ASCIIEventServerSettings>
+	<DebugLevel>1</DebugLevel>
+	<VxCoreAddress></VxCoreAddress>
+	<VxCorePort></VxCorePort>
+	<VxUsername></VxUsername>
+	<VxPassword></VxPassword>
+	<IntegrationId></IntegrationId>
+	<EthernetSettings>
+		<Address></Address>
+		<Port>9999</Port>
+	</EthernetSettings>
+	<SerialPortSettings>
+		<PortName>COM1</PortName>
+		<BaudRate>19200</BaudRate>
+		<DataBits>8</DataBits>
+		<Parity>none</Parity>
+		<StopBits>1</StopBits>
+	</SerialPortSettings>
+</ASCIIEventServerSettings>

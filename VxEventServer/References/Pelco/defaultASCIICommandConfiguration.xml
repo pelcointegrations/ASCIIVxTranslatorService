@@ -1,0 +1,327 @@
+<ASCIICommandConfiguration>
+	<Commands>
+		<Command>
+			<!-- Selects Monitor that commands will be addressing -->
+			<Name>SelectMonitor</Name>
+			<Value>M</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>9999</Max>
+				<Position>before</Position>
+			</Parameter>
+		</Command>
+		<Command>
+			<!-- Selects Cell of Monitor that commands will be addressing -->
+			<Name>SelectCell</Name>
+			<Value>C</Value>
+			<Delimiter>m</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>16</Max>
+				<Position>before</Position>
+			</Parameter>
+		</Command>		
+		<Command>
+			<!-- Selects Camera to place on selected Monitor, displays Camera -->
+			<Name>SelectCamera</Name>
+			<Value>#</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>9999</Max>
+				<Position>before</Position>
+			</Parameter>
+		</Command>
+		<Command>
+			<!-- Advances selected Camera by one, displays Camera -->
+			<Name>NextCamera</Name>
+			<Value>+</Value>
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Decrements selected Camera by one, displays Camera -->
+			<Name>PreviousCamera</Name>
+			<Value>-</Value>
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Switches layout on selected Monitor to 1x1, selects Cell 1 -->
+			<Name>SingleCameraMode</Name>
+			<Value>i</Value>
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Switches layout on selected Monitor to 2x2, selects Cell defined by param -->
+			<Name>CameraMode2x2</Name>
+			<Value>u</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>4</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Switches layout on selected Monitor to 3x3, selects Cell defined by param -->
+			<Name>CameraMode3x3</Name>
+			<Value>o</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>9</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Switches layout on selected Monitor to 4x4, selects Cell defined by param -->		
+			<Name>CameraMode4x4</Name>
+			<Value>x</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>16</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Switches layout on selected Monitor by enumerated layout values -->		
+			<Name>SetCameraLayout</Name>
+			<Value>scl</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>14</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>		
+		<Command>
+			<!-- selects Camera defined by param and plays at speed 1 (live)-->
+			<Name>Play</Name>
+			<Value>&gt;</Value>
+			<Delimiter>m</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>65536</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Stops video on selected Cell of selected Monitor -->
+			<Name>Stop</Name>
+			<Value>s</Value>
+			<Delimiter>m</Delimiter>
+		</Command>		
+		<Command>
+			<!-- Changes play speed to 0 on selected Cell of selected Monitor -->
+			<Name>Pause</Name>
+			<Value>e</Value>
+			<Delimiter>m</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>65536</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Changes play speed to param on selected Cell of selected Monitor -->
+			<Name>FastForward</Name>
+			<Value>&gt;&gt;</Value>
+			<Delimiter>m</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>65536</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>		
+		<Command>
+			<!-- Changes play speed to -param on selected Cell of selected Monitor -->
+			<Name>Rewind</Name>
+			<Value>&lt;&lt;</Value>
+			<Delimiter>m</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>65536</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Seeks selected Camera on selected Cell of selected Monitor to time -->
+			<!-- example - Z2016-11-22T08:00:00a -->
+			<Name>Seek</Name>
+			<Value>Z</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>datetime</Type>
+				<Position>after</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Goes to live on selected Camera of selected Cell of selected Monitor -->
+			<Name>ToggleLive</Name>
+			<Value>y</Value>
+			<Delimiter>m</Delimiter>
+		</Command>
+		<Command>
+			<!-- Pans selected camera left at given speed -->
+			<Name>PanLeft</Name>
+			<Value>L</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>64</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Pans selected camera right at given speed -->
+			<Name>PanRight</Name>
+			<Value>R</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>64</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Tilts selected camera up at given speed -->
+			<Name>TiltUp</Name>
+			<Value>U</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>64</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Tilts selected camera down at given speed -->
+			<Name>TiltDown</Name>
+			<Value>D</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>64</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Zooms selected camera in -->
+			<Name>Zoom</Name>
+			<Value>T</Value>			
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Zooms selected camera out -->
+			<Name>Wide</Name>
+			<Value>W</Value>			
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Stops all PTZ on selected camera -->
+			<Name>StopPTZ</Name>
+			<Value>s</Value>			
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Runs a pattern on selected camera -->
+			<Name>ExecutePattern</Name>
+			<Value>p</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>99</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Goes to given preset on selected camera -->
+			<Name>GotoPreset</Name>
+			<Value>\</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>9999</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Focus near on selected camera -->
+			<Name>FocusNear</Name>
+			<Value>N</Value>
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Focus far on selected camera -->
+			<Name>FocusFar</Name>
+			<Value>F</Value>
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Iris open on selected camera -->
+			<Name>IrisOpen</Name>
+			<Value>O</Value>
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Iris close on selected camera -->
+			<Name>IrisClose</Name>
+			<Value>C</Value>
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
+			<!-- Trigger given alarm -->
+			<Name>TriggerAlarm</Name>
+			<Value>E</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>9999</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Clear given alarm -->
+			<Name>ClearAlarm</Name>
+			<Value>l</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>9999</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+		<Command>
+			<!-- Stop processing commands for given time period -->
+			<Name>Wait</Name>
+			<Value>w</Value>
+			<Delimiter>a</Delimiter>
+			<Parameter>
+				<Type>int</Type>
+				<Min>1</Min>
+				<Max>60</Max>
+				<Position>before</Position>
+			</Parameter>			
+		</Command>
+	</Commands>
+</ASCIICommandConfiguration>
