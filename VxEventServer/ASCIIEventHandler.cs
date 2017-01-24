@@ -1417,13 +1417,13 @@ namespace ASCIIEvents
                     SetCameraLayout(layout);
                     break;
                 case "Play":
-                    Play(paramInt);
+                    Play();
                     break;
                 case "Stop":
                     Stop();
                     break;
                 case "Pause":
-                    Pause(paramInt);
+                    Pause();
                     break;
                 case "FastForward":
                     FastForward(paramInt);
@@ -1569,15 +1569,9 @@ namespace ASCIIEvents
             else Trace.WriteLineIf(_debugLevel > 0, "Monitor " + _selectedMonitor + " layout set to " + layout.ToString());
         }
 
-        private void Play(int camera)
+        private void Play()
         {
-            if (camera != _selectedCamera)
-            {
-                _selectedCamera = camera;
-                DisplayCameraOnMonitor(_selectedCamera, _selectedMonitor, _selectedCell);
-            }
-            else
-                ChangePlaySpeed(_selectedCamera, _selectedMonitor, _selectedCell, 1);
+            ChangePlaySpeed(_selectedCamera, _selectedMonitor, _selectedCell, 1);
         }
 
         private void Stop()
@@ -1585,7 +1579,7 @@ namespace ASCIIEvents
             Disconnect(_selectedCamera, _selectedMonitor, _selectedCell);
         }
 
-        private void Pause(int camera)
+        private void Pause()
         {
             ChangePlaySpeed(_selectedCamera, _selectedMonitor, _selectedCell, 0);
         }

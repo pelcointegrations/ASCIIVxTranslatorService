@@ -1,4 +1,35 @@
 ----------------------------------------------------
+1/24/2017 Version 1.12.8.0 (To be used with VideoXpert 1.12 and up)
+
+	Changed Select Camera Layout Max value to 18 in defaultASCIICommandConfiguration.xml file.
+	
+	Updated VxSDK to released version 1.2.
+
+----------------------------------------------------
+1/19/2017 Version 1.12.7.0 (To be used with VideoXpert 1.12 and up)
+
+	VXINT-763 Fixed issue with FF not working by updating to latest VxSDK.
+	
+	Removed parameter from Play command for consistency.  Selecting a camera must
+	be done through SelectCamera command.
+	
+	Note: this change will cause and issue with the Play command from previous versions
+	of the service.  The Play command in an existing command file should be replaced
+	with the newer version or simply remove the Parameter element.
+	
+----------------------------------------------------
+1/18/2017 Version 1.12.6.0 (To be used with VideoXpert 1.12 and up)
+
+	Removed parameter from Pause command.  Pause operation will be on selected camera
+	rather than allowing camera to be sent with command.
+	
+	Set default upper limit to FF and REW to 128.
+
+	Note: this change will cause and issue with the Pause command from previous versions
+	of the service.  The Pause command in an existing command file should be replaced
+	with the newer version or simply remove the Parameter element.
+	
+----------------------------------------------------
 1/13/2017 Version 1.12.5.0 (To be used with VideoXpert 1.12 and up)
 
 	Cleaned up code including comments.
