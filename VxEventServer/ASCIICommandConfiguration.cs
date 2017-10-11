@@ -12,12 +12,20 @@ namespace ASCIIEvents
     public class ASCIICommandConfiguration
     {
         private Commands commands;
+        private Response response;
 
         [XmlElement("Commands")]
         public Commands Commands
         {
             get { return commands; }
             set { commands = value; }
+        }
+
+        [XmlElement("Response")]
+        public Response Response
+        {
+            get { return response; }
+            set { response = value; }
         }
     }
 
@@ -111,6 +119,24 @@ namespace ASCIIEvents
         {
             get { return position; }
             set { position = value; }
+        }
+    }
+
+    public class Response
+    {
+        private string ack = string.Empty;
+        private string nack = string.Empty;
+
+        public string Ack
+        {
+            get { return ack; }
+            set { ack = value; }
+        }
+
+        public string Nack
+        {
+            get { return nack; }
+            set { nack = value; }
         }
     }
 }

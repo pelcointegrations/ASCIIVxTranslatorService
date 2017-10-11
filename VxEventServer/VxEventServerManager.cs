@@ -24,11 +24,15 @@ namespace VxEventServer
         private static string defaultAsciiCommandConfigurationFileName = "defaultASCIICommandConfiguration.xml";
         private static string alarmConfigurationFileName = "AlarmConfiguration.xml";
         private static string defaultAlarmConfigurationFileName = "defaultAlarmConfiguration.xml";
+        private static string asciiScriptsFileName = "ASCIIScripts.xml";
+        private static string monitorToCellMapFileName = "MonitorToCellMap.xml";
 
         private static CustomSituations _customSituations = null;
         private static ASCIIEventServerSettings _settings = null;
         private static ASCIICommandConfiguration _commands = null;
         private static AlarmConfiguration _alarmConfiguration = null;
+        private static ASCIIScripts _asciiScripts = null;
+        private static MonitorToCellMap _monitorToCellMap = null;
 
         public bool Initialized { get; private set; }
         private ASCIIEventHandler _ASCIIEventHandler = null;
@@ -60,7 +64,7 @@ namespace VxEventServer
 
             Reload();
 
-            _ASCIIEventHandler = new ASCIIEventHandler(_customSituations, _settings, _commands, _alarmConfiguration);
+            _ASCIIEventHandler = new ASCIIEventHandler(_customSituations, _settings, _commands, _alarmConfiguration, _asciiScripts, _monitorToCellMap);
 
             this.Initialized = true;
 
@@ -79,6 +83,8 @@ namespace VxEventServer
             _alarmConfiguration = GetAlarmConfiguration(GetFullPath(alarmConfigurationFileName));
             if (_alarmConfiguration == null)
                 _alarmConfiguration = GetAlarmConfiguration(GetFullPath(defaultAlarmConfigurationFileName));
+            _asciiScripts = GetASCIIScripts(GetFullPath(asciiScriptsFileName));
+            _monitorToCellMap = GetMonitorToCellMap(GetFullPath(monitorToCellMapFileName));
         }
 
         private static string GetFullPath(string filename)
@@ -162,6 +168,40 @@ namespace VxEventServer
                 Trace.WriteLineIf(((_settings != null) && (_settings.DebugLevel > 0)), "Failed to load Alarm configuration: " + e.Message);
             }
             return commands;
+        }
+
+        private static ASCIIScripts GetASCIIScripts(string path)
+        {
+            ASCIIScripts scripts = null;
+            try
+            {
+                XmlSerializer serializer = new XmlSerializer(typeof(ASCIIScripts));
+                Stream fs = File.OpenRead(path);
+
+                scripts = (ASCIIScripts)serializer.Deserialize(fs);
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLineIf(((_settings != null) && (_settings.DebugLevel > 0)), "Failed to load ASCII Scripts: " + e.Message);
+            }
+            return scripts;
+        }
+        
+        private static MonitorToCellMap GetMonitorToCellMap(string path)
+        {
+            MonitorToCellMap mtocMap = null;
+            try
+            {
+                XmlSerializer serializer = new XmlSerializer(typeof(MonitorToCellMap));
+                Stream fs = File.OpenRead(path);
+
+                mtocMap = (MonitorToCellMap)serializer.Deserialize(fs);
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLineIf(((_settings != null) && (_settings.DebugLevel > 2)), "Failed to load MonitorToCellMap : " + e.Message);
+            }
+            return mtocMap;
         }
 
         public void Dispose()

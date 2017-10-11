@@ -60,9 +60,6 @@ namespace ASCIIEvents
         private int alarmState = 0;
         private string type = string.Empty;
 
-        [XmlElement("Property")]
-        public SituationProperty[] properties;
-
         public int AlarmState
         {
             get { return alarmState; }
@@ -74,6 +71,12 @@ namespace ASCIIEvents
             get { return type; }
             set { type = value; }
         }
+
+        [XmlElement("Property")]
+        public SituationProperty[] Properties;
+
+        [XmlElement("ExecuteScript")]
+        public int[] ExecuteScripts;
     }
 
     public class SituationProperty

@@ -84,68 +84,74 @@ namespace ASCIIVxTranslatorService
                 if (!VxEventServer.VxEventServerManager.Instance.Initialized)
                     return;
 
-                string command;
+                string command = string.Empty;
                 CommandHelp();
                 do
                 {
-                    command = Console.ReadLine();
-                    if (command.ToUpper() == "STATUS")
+                    try
                     {
-                        VxEventServer.VxEventServerManager.Instance.PrintStatus();
-                    }
-                    else if ((command.ToUpper() == "H")||(command.ToUpper() == "?"))
-                    {
-                        CommandHelp();
-                    }
-                    else if (command.ToUpper().Contains("CMD"))
-                    {
-                        command = command.Replace("CMD ", "");
-                        command = command.Replace("cmd ", "");
-                        string response = VxEventServer.VxEventServerManager.Instance.PassTestString(command);
-                        Console.WriteLine(response);
-                    }
-                    else if (command.ToUpper().Contains("TESTFILE"))
-                    {
-                        var commands = command.Split(' ');
-                        string param = string.Empty;
-                        if (commands.Length > 1)
-                            param = commands[1];
-                        if (param != string.Empty)
+                        command = Console.ReadLine();
+                        if (command.ToUpper() == "STATUS")
                         {
-                            VxEventServer.VxEventServerManager.Instance.InterpretTestFile(param);
-                            Console.WriteLine("Test File " + param + " Processed");
+                            VxEventServer.VxEventServerManager.Instance.PrintStatus();
                         }
-                        else Console.WriteLine("Invalid File Name");
+                        else if ((command.ToUpper() == "H") || (command.ToUpper() == "?"))
+                        {
+                            CommandHelp();
+                        }
+                        else if (command.ToUpper().Contains("CMD"))
+                        {
+                            command = command.Replace("CMD ", "");
+                            command = command.Replace("cmd ", "");
+                            string response = VxEventServer.VxEventServerManager.Instance.PassTestString(command);
+                            Console.WriteLine(response);
+                        }
+                        else if (command.ToUpper().Contains("TESTFILE"))
+                        {
+                            var commands = command.Split(' ');
+                            string param = string.Empty;
+                            if (commands.Length > 1)
+                                param = commands[1];
+                            if (param != string.Empty)
+                            {
+                                VxEventServer.VxEventServerManager.Instance.InterpretTestFile(param);
+                                Console.WriteLine("Test File " + param + " Processed");
+                            }
+                            else Console.WriteLine("Invalid File Name");
+                        }
+                        else if (command.ToUpper().Contains("DATASOURCE"))
+                        {
+                            var commands = command.Split(' ');
+                            string param = string.Empty;
+                            if (commands.Length > 1)
+                                param = commands[1];
+                            string response = VxEventServer.VxEventServerManager.Instance.ListDataSources(param);
+                            Console.WriteLine(response);
+                        }
+                        else if (command.ToUpper().Contains("MONITOR"))
+                        {
+                            var commands = command.Split(' ');
+                            string param = string.Empty;
+                            if (commands.Length > 1)
+                                param = commands[1];
+                            string response = VxEventServer.VxEventServerManager.Instance.ListMonitors(param);
+                            Console.WriteLine(response);
+                        }
+                        else if (command.ToUpper().Contains("SITUATIONS"))
+                        {
+                            var commands = command.Split(' ');
+                            string param = string.Empty;
+                            if (commands.Length > 1)
+                                param = commands[1];
+                            string response = VxEventServer.VxEventServerManager.Instance.ListSituations(param);
+                            Console.WriteLine(response);
+                        }
                     }
-                    else if (command.ToUpper().Contains("DATASOURCE"))
+                    catch (Exception e)
                     {
-                        var commands = command.Split(' ');
-                        string param = string.Empty;
-                        if (commands.Length > 1)
-                            param = commands[1];
-                        string response = VxEventServer.VxEventServerManager.Instance.ListDataSources(param);
-                        Console.WriteLine(response);
-                    }
-                    else if (command.ToUpper().Contains("MONITOR"))
-                    {
-                        var commands = command.Split(' ');
-                        string param = string.Empty;
-                        if (commands.Length > 1)
-                            param = commands[1];
-                        string response = VxEventServer.VxEventServerManager.Instance.ListMonitors(param);
-                        Console.WriteLine(response);
-                    }
-                    else if (command.ToUpper().Contains("SITUATIONS"))
-                    {
-                        var commands = command.Split(' ');
-                        string param = string.Empty;
-                        if (commands.Length > 1)
-                            param = commands[1];
-                        string response = VxEventServer.VxEventServerManager.Instance.ListSituations(param);
-                        Console.WriteLine(response);
+                        Console.WriteLine("Exception in console command processing: " + e.Message);
                     }
                 } while (command.ToUpper() != "QUIT");
-
             }
         }
 

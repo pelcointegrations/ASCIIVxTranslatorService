@@ -1,5 +1,169 @@
 ----------------------------------------------------
-1/24/2017 Version 1.12.8.0 (To be used with VideoXpert 1.12 and up)
+8/10/2017 Version 2.0.9.0
+
+	Allow USE_INTEGRATION_ID to fill in SourceDeviceId for CustomSituations much
+	like it does for Event Injection itself.
+	
+----------------------------------------------------
+8/10/2017 Version 2.0.8.0
+
+	VXINT-1123 Added SourceDeviceId to CustomSituations.xml.
+	
+----------------------------------------------------
+8/9/2017 Version 2.0.7.0
+
+	VXINT-1108.  Fixed random crash that was only occurring when configured for TCP.
+	As part of this, TCPListener class is not longer being used in favor of Sockets.
+	Also Platform Target changed to X86 to follow VXSdk settings.
+
+	For test purposes, added ability to call a script directly from console.
+	Typing "cmd SCRIPT1" will now execute script 1.  "cmd SCRIPT2" will execute 
+	script 2, etc.
+
+----------------------------------------------------
+8/1/2017 Version 2.0.6.0
+
+	Added Response configuration to Command file.  If defined Ack and Nack will return 
+	the defined string as a response to a valid/invalid command respectively.  
+	Ack does not mean the command was successful, it just means that a valid command 
+	was successfully received and will be attempted.
+	
+	Added KeepAlive command to Command file.  This command can be used in conjunction
+	with the Response definitions to provide a means of keep alive.  This command
+	does nothing other than return the defined Ack value.
+	
+	Responses are valid for serial communications and TCP.  Not UDP.  Note that
+	TCP will return the defined Ack value or the default return values for
+	TCP (AcK and NacK).
+
+----------------------------------------------------
+7/26/2017 Version 2.0.5.0
+
+	Updated to VxSDK 2.0.  SHA-1: 12092cf6ba8a97a5e2e67f865045d19147a79ca5
+
+	Fixed issue VXINT-1098.  Since the addition of sessions, PTZ handling has
+	needed to be updated to ensure sessions do not interfere with each other in
+	regard to PTZ data.  They can still affect one another in fighting over control
+	of a PTZ, but now the data itself should be protected between sessions.
+	
+----------------------------------------------------
+7/17/2017 Version 2.0.4.0 (To be used with VideoXpert 1.12 and up)
+
+	VXINT-1089 Unable to map ASCII Monitor to VX Monitor/Cell.
+	
+	Issue occurred after changes in 2.0.1.0.  Reviewed all cell numbers 
+	being used and ensured use of returned cell number from GetMonitor call.
+	This routine performs mapping and may change the cell number
+	which was not used consistently.
+
+----------------------------------------------------
+7/12/2017 Version 2.0.3.0 (To be used with VideoXpert 1.12 and up)
+
+	VXINT-1080 StopPTZ was clearing camera number after setting it.
+	
+	Changed some of the debug output from script handling so that cell numbers are 
+	consistent (report 1 based rather than 0 based).
+
+----------------------------------------------------
+6/23/2017 Version 2.0.2.0 (To be used with VideoXpert 1.12 and up)
+
+	Added AcK and NacK response for TCP connection similar to UDI5000.
+	Note that a single tcp message containing two commands, like "101Ma3#a" will
+	result in two acknowledges coming back "AcKAcK" (1 for each command).
+	
+----------------------------------------------------
+6/22/2017 Version 2.0.1.0 (To be used with VideoXpert 1.12 and up)
+
+	Added desired feature to disconnect video from current cell if
+	camera 0 is selected.  Note that in order to make this work, the
+	SelectCamera command in the ASCIICommandConfiguration.xml file will
+	need to have the minimum set to 0 ( <Min>0</Min> )
+	
+	Added sessions to keep track of input from various connection types.
+	Each input type will now remember which monitor, camera and cell was 
+	last assigned through that input.  Inputs are the console, serial port,
+	UDP or TCP port.
+	
+	Added ability to accept TCP connections.  Connection will remain open
+	until client disconnects.  A new XML tag has been added to
+	ASCIIEventServerSettings.xml under EthernetSettings:
+	<ConnectionType>UDP</ConnectionType> - listens for UDP
+	<ConnectionType>TCP</ConnectionType> - listens for TCP
+	<ConnectionType>TCP MultiSession</ConnectionType> - listens for TCP,
+	each connection will have its own session
+
+----------------------------------------------------
+5/9/2017 Version 2.0.0.0 (To be used with VideoXpert 1.12 and up)
+
+	VXINT-1002 Fixed issue with DisplayCamera when same camera is already
+	in monitor cell and in playback.  Camera was not going to live.  Fix included
+	from EventMonitor service.
+
+	Upgraded VxSDK SHA-1: a484b146e3258b4fe41540f17212093c7857268c on gitlab Master
+	which includes fix for a subscription issue where loginInfo was being lost and 
+	subscribe call subsequently failing.
+
+----------------------------------------------------
+4/4/2017 Version 1.12.13.0 (To be used with VideoXpert 1.12 and up)
+
+	Upgraded to VxSDK SHA-1: de6890fa4ceb7e4ad899730d41e901c1d042fcb1
+	VXINT-961, Previous change for setting speed had unintended consequence of preventing
+	disconnect from occurring.  If trying to disconnect video, no longer sending speed.
+
+----------------------------------------------------
+3/29/2017 Version 1.12.12.0 (To be used with VideoXpert 1.12 and up)
+
+	Upgraded to VxSDK SHA-1: 4cfa56bc91897991ccbe6a39b02cebe833a76321.
+	When setting the data source of a monitor cell, added setting speed of 1 to VxSDK
+	to conform to Serenity spec.  Note that time is supposed to be set as well, but the
+	SDK is unable to set a value to null and an empty string causes an exception.  VxSDK
+	should be further enhanced to allow us to send a null for time in the future.
+	
+----------------------------------------------------
+3/24/2017 Version 1.12.11.0 (To be used with VideoXpert 1.12 and up)
+
+	Removed POS mode. This was primarily used as a demo.
+	
+	Removed AutoCellRotateTimeout.  This feature added complications to the code and was not
+	used at the integration site it was intended for, where MonitorToCellMap functionality
+	was used instead.
+	
+	Updated VxSDK to latest code on master 3/22/2017(SHA-1: 513375f14b97982808bae98d91d749b617ad1986).
+	
+	Added a system level check where if any of the three main data lists (monitor, situation 
+	or datasources) are null or 0 length, we force a reconnect to the system.
+	
+	Removed multiple locks and revisted entire locking strategy now that system may be ripped out from
+	under the code at any time - system, monitors, datasources and situations are now all locked
+	under the system lock - they all use the same resource (vxsdk) anyway.
+	
+	Added BookMark Action to Scripts.	
+
+----------------------------------------------------
+3/15/2017 Version 1.12.10.0 (To be used with VideoXpert 1.12 and up)
+
+	Added MonitorToCellMap functionality which lets a user map ASCII monitor numbers to a
+	particular cell of a monitor.
+	
+----------------------------------------------------
+3/15/2017 Version 1.12.9.0 (To be used with VideoXpert 1.12 and up)
+
+	Added AutoCellRotateTimeout to configuration, allowing users to select a timeout in milliseconds
+	for resetting to cell 1. If not 0, this will enable the autoCell selection feature which rotates
+	the cell from 1 to max cells on screen.  The timeout sets it back to cell 1.  This is only checked
+	on ASCII command SelectCamera.
+	
+	DebugLevel greater than two now prints all characters received through serial or ethernet.
+
+----------------------------------------------------
+2/21/2017 Version 1.12.8.0 (To be used with VideoXpert 1.12 and up)
+
+	Added ability to call scripts on an alarm trigger or clear command.  Scripts are defined 
+	in ASCIIScripts.xml file.  <ExecuteScript> element has been added to the <Situation>
+	element of the AlarmConfiguration.  Change is in support of VXINT-859.
+	
+----------------------------------------------------
+1/26/2017 (To be used with VideoXpert 1.12 and up)
 
 	Changed Select Camera Layout Max value to 18 in defaultASCIICommandConfiguration.xml file.
 	

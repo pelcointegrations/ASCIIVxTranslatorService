@@ -16,11 +16,21 @@ namespace ASCIIEvents
 {
     class PTZInfo
     {
+        public int camera;
         public int pan;
         public int tilt;
         public int zoom;
         public int iris;
         public int focus;
+        public int preset;
+        public int pattern;
+        public bool newPanCommand;
+        public bool newTiltCommand;
+        public bool newZoomCommand;
+        public bool newIrisCommand;
+        public bool newFocusCommand;
+        public bool newPresetCommand;
+        public bool newPatternCommand;
 
         public PTZInfo()
         {
@@ -29,20 +39,47 @@ namespace ASCIIEvents
 
         public PTZInfo(PTZInfo ptz)
         {
+            camera = ptz.camera;
             pan = ptz.pan;
             tilt = ptz.tilt;
             zoom = ptz.zoom;
             iris = ptz.iris;
             focus = ptz.focus;
+            preset = ptz.preset;
+            pattern = ptz.pattern;
+            newPanCommand = ptz.newPanCommand;
+            newTiltCommand = ptz.newTiltCommand;
+            newZoomCommand = ptz.newZoomCommand;
+            newIrisCommand = ptz.newIrisCommand;
+            newFocusCommand = ptz.newFocusCommand;
+            newPresetCommand = ptz.newPresetCommand;
+            newPatternCommand = ptz.newPatternCommand;
         }
 
         public void Clear()
         {
+            camera = 0;
             pan = 0;
             tilt = 0;
             zoom = 0;
             iris = 0;
             focus = 0;
+            preset = 0;
+            pattern = 0;
+            newPanCommand = false;
+            newTiltCommand = false;
+            newZoomCommand = false;
+            newIrisCommand = false;
+            newFocusCommand = false;
+            newPresetCommand = false;
+            newPatternCommand = false;
+        }
+
+        public bool InProgress()
+        {
+            if (newPanCommand || newTiltCommand || newZoomCommand || newIrisCommand || newFocusCommand || newPresetCommand || newPatternCommand)
+                return true;
+            else return false;
         }
 
         public bool StoppingPTZ()
@@ -51,12 +88,74 @@ namespace ASCIIEvents
                 return true;
             else return false;
         }
+
+        public void Merge(PTZInfo mergeInfo)
+        {
+            if (mergeInfo.newPanCommand)
+            {
+                this.pan = mergeInfo.pan;
+                this.newPanCommand = true;
+            }
+            if (mergeInfo.newTiltCommand)
+            {
+                this.tilt = mergeInfo.tilt;
+                this.newTiltCommand = true;
+            }
+            if (mergeInfo.newZoomCommand)
+            {
+                this.zoom = mergeInfo.zoom;
+                this.newZoomCommand = true;
+            }
+            if (mergeInfo.newIrisCommand)
+            {
+                this.iris = mergeInfo.iris;
+                this.newIrisCommand = true;
+            }
+            if (mergeInfo.newFocusCommand)
+            {
+                this.focus = mergeInfo.focus;
+                this.newFocusCommand = true;
+            }
+            if (mergeInfo.newPresetCommand)
+            {
+                int camera = this.camera;
+                Clear();
+                this.camera = camera;
+                this.preset = mergeInfo.preset;
+                this.newPresetCommand = true;
+            }
+            if (mergeInfo.newPatternCommand)
+            {
+                int camera = this.camera;
+                Clear();
+                this.camera = camera;
+                this.pattern = mergeInfo.pattern;
+                this.newPatternCommand = true;
+            }
+
+        }
+    }
+
+    class Session
+    {
+        public string name = string.Empty;
+        public string id = Guid.NewGuid().ToString();
+        public int selectedCamera = 0;
+        public int selectedMonitor = 0;
+        public int selectedCell = 0;
+        public PTZInfo ptzInfo = new PTZInfo();
+        public object ptzLock = new object();
+        public List<PTZInfo> ptzHoldList = new List<PTZInfo>();
+
+        public Session(string sessionName)
+        {
+            name = sessionName;
+        }
     }
 
     class ASCIIEventHandler
     {
-        private static string SdkKey = "C6B57D9440C8DFE461574971CE6A4811EF9CA6D254452E386D2748A464FD5606";
-        private static int MAX_KVP_VALUE_SIZE = 2048; // must break up receipt into chunks smaller than this
+        //private static string SdkKey = "C6B57D9440C8DFE461574971CE6A4811EF9CA6D254452E386D2748A464FD5606";
         private static int MAX_ASCII_COMMAND_LENGTH = 2048; // throw out commands bigger than this
 
         private CPPCli.VXSystem _vxSystem = null;
@@ -64,56 +163,57 @@ namespace ASCIIEvents
 
         private string _systemID = string.Empty;
         private List<CPPCli.Monitor> _monitors = null;
-        private object _monitorLock = new object();
         private List<CPPCli.DataSource> _datasources = null;
-        private object _datasourceLock = new object();
         private List<CPPCli.Situation> _situations = null; //total situation list read from Vx
-        private object _situationLock = new object();
         private List<CustomSituation> _customSituations = null;
         private ASCIIEventServerSettings _settings = null;
         private List<Command> _commands = null;
         private List<string> _delimiters = null;
         private List<Alarm> _alarmConfig = null;
-        private int _selectedCamera = 0;
-        private int _selectedMonitor = 0;
-        private int _selectedCell = 0;
+        private List<Script> _scripts = null;
+        private List<MonitorToCell> _monitorToCellMapList = null;
+        private string _ackResponse = string.Empty;
+        private string _nackResponse = string.Empty;
 
-        private PTZInfo _currentPTZInfo = new PTZInfo();
         private DateTime _commandDelayUntilTime = DateTime.Now;
 
         private int _debugLevel;
 
         private Thread _listenASCIISerialThread = null;
         private Thread _listenASCIIEthernetThread = null;
+        private Thread _listenASCIIEthernetThreadTCP = null;
         private Thread _processPTZCommandsThread = null;
         private Thread _refreshDataThread = null;
-        private object _lockPTZCommand = new object();
-        private bool _newPTZCommand = false;
         private volatile bool _stopping = false;
 
-        private bool _posMode = false;
-        private List<string> _extraPOSdata = new List<string>();
+        // each listener or handler thread now has its own session
+        private List<Session> _sessions = new List<Session>();
+        private object _sessionLock = new object();
+        private Session testSession = new Session("ConsoleSession"); // for commands coming through console
+        private Session tcpSingleSession = new Session("TCPSession"); // for commands coming through tcp handled through single session
+        private bool isTCPMultiSession = false;
 
         public ASCIIEventHandler(CustomSituations customSits, 
             ASCIIEventServerSettings settings, 
             ASCIICommandConfiguration asciiCommands, 
-            AlarmConfiguration alarmConfiguration)
+            AlarmConfiguration alarmConfiguration,
+            ASCIIScripts asciiScripts,
+            MonitorToCellMap monitorToCellMap)
         {
             try
             {
                 _settings = settings;
                 _debugLevel = _settings.DebugLevel;
 
-                // Set whether or not to run in POS mode
-                if ((_settings.POSSettings != null) && (_settings.POSSettings.POSMode == true))
-                {
-                    _posMode = true;
-                    Trace.WriteLineIf(_debugLevel > 0, "ASCII Interpreter set for POS Mode");
-                }
-
                 //moved before InitializeVxWrapper so custom events from xml can be added to vx
-                if (customSits != null)
+                if ((customSits != null)&&(customSits.customSituations != null))
                     _customSituations = customSits.customSituations.ToList();
+
+                if ((asciiScripts != null)&&(asciiScripts.scripts != null))
+                    _scripts = asciiScripts.scripts.ToList();
+
+                if (monitorToCellMap != null)
+                    _monitorToCellMapList = monitorToCellMap.monitorToCellMap.ToList();
 
                 // initialize _vxSystem
                 Initialize();
@@ -122,6 +222,13 @@ namespace ASCIIEvents
                 {
                     _commands = asciiCommands.Commands.Command.ToList();
                     _delimiters = asciiCommands.Commands.GetDelimiters();
+                    if (asciiCommands.Response != null)
+                    {
+                        if (! string.IsNullOrEmpty(asciiCommands.Response.Ack))
+                            _ackResponse = asciiCommands.Response.Ack;
+                        if (! string.IsNullOrEmpty(asciiCommands.Response.Nack))
+                            _nackResponse = asciiCommands.Response.Nack;
+                    }
                 }
 
                 if (alarmConfiguration != null)
@@ -129,15 +236,32 @@ namespace ASCIIEvents
 
                 _stopping = false;
 
+                _sessions.Add(testSession);
+                _sessions.Add(tcpSingleSession);
+
                 if ((_settings.SerialPortSettings != null) && (_settings.SerialPortSettings.PortName != string.Empty))
                 {
                     this._listenASCIISerialThread = new Thread(this.ListenASCIISerialThread);
                     this._listenASCIISerialThread.Start();
                 }
-                if ((_settings.EthernetSettings != null)&&(_settings.EthernetSettings.Port != 0))
+                if ((_settings.EthernetSettings != null) && (!string.IsNullOrEmpty(_settings.EthernetSettings.Port)))
                 {
-                    this._listenASCIIEthernetThread = new Thread(this.ListenASCIIEthernetThread);
-                    this._listenASCIIEthernetThread.Start();
+                    // 06/21/2017 add TCP listener as option
+                    if (_settings.EthernetSettings.ConnectionType.ToUpper().Contains("TCP"))
+                    {
+                        if (_settings.EthernetSettings.ConnectionType.ToUpper().Contains("MULTI"))
+                        {
+                            isTCPMultiSession = true;
+                        }
+
+                        this._listenASCIIEthernetThreadTCP = new Thread(this.ListenASCIIEthernetThreadTCP);
+                        this._listenASCIIEthernetThreadTCP.Start();
+                    }
+                    else
+                    {
+                        this._listenASCIIEthernetThread = new Thread(this.ListenASCIIEthernetThread);
+                        this._listenASCIIEthernetThread.Start();
+                    }
                 }
 
                 this._processPTZCommandsThread = new Thread(this.ProcessPTZCommandThread);
@@ -177,6 +301,16 @@ namespace ASCIIEvents
                 _listenASCIIEthernetThread.Join();
 
             _listenASCIIEthernetThread = null;
+
+            // if TCP sessions have not ended, give at least 100 ms for them to detect
+            // stopping and exit
+            _sessions.Remove(testSession);
+            _sessions.Remove(tcpSingleSession);
+
+            if (_sessions.Count > 0)
+            {
+                Thread.Sleep(1000);
+            }
         }
 
         #region INITIALIZATION OF VXSDK
@@ -185,100 +319,111 @@ namespace ASCIIEvents
             // re-initialize connection if needed
             if ((_vxSystem == null))// || (!_vxCore.IsConnected()))
             {
-                lock (_vxSystemLock)
-                {
-                    _vxSystem = null;
-                    ConnectVxSystem(ref _vxSystem, _settings.VxUsername, _settings.VxPassword, _settings.VxCoreAddress, _settings.VxCorePort, true);
-                }
+                ForceReconnect();
             }
             return _vxSystem;
         }
 
+        private void ForceReconnect()
+        {
+            lock (_vxSystemLock)
+            {
+                if (_vxSystem != null)
+                {
+                    _vxSystem.Dispose();
+                    _vxSystem = null;
+                }
+                _monitors = null;
+                _situations = null;
+                _datasources = null;
+                ConnectVxSystem(ref _vxSystem, _settings.VxUsername, _settings.VxPassword, _settings.VxCoreAddress, _settings.VxCorePort, true);
+            }
+        }
+
         private void Initialize()
         {
-            CPPCli.VXSystem system = GetVxSystem();
-            if (system == null)
+            lock(_vxSystemLock)
             {
-                Trace.WriteLine("Failed to connect to VideoXpert system at " + _settings.VxCoreAddress);
-            }
-            else
-            {
-                lock(_monitorLock)
+                CPPCli.VXSystem system = GetVxSystem();
+                if (system == null)
+                {
+                    Trace.WriteLine("Failed to connect to VideoXpert system at " + _settings.VxCoreAddress);
+                }
+                else
                 {
                     _monitors = system.GetMonitors();
-                }
-                lock(_datasourceLock)
-                {
                     _datasources = system.GetDataSources();
-                }
-                lock(_situationLock)
-                {
                     _situations = system.GetSituations();
-                }
-                RegisterExternalDevice();
 
-                LoadCustomSituations();
+                    RegisterExternalDevice();
+
+                    LoadCustomSituations();
+                }
             }
         }
 
         private void RegisterExternalDevice()
         {
-            CPPCli.VXSystem system = GetVxSystem();
-            if (system != null)
+            string deviceName = "ASCII Vx Translator Service";
+            lock (_vxSystemLock)
             {
-                string localIp = GetLocalIPv4();
-                CPPCli.Device thisDevice = null;
-                try
+                CPPCli.VXSystem system = GetVxSystem();
+                if (system != null)
                 {
-                    List<CPPCli.Device> devices = system.GetDevices();
-                    if (devices != null)
+                    string localIp = GetLocalIPv4();
+                    CPPCli.Device thisDevice = null;
+                    try
                     {
-                        thisDevice = devices.Find(x => (x.Ip == localIp && x.Type == CPPCli.Device.Types.External));
-                    }
-                }
-                catch { };
-                // if we are not registered, then call AddDevice to register us with the system
-                if (thisDevice == null)
-                {
-                    CPPCli.NewDevice asciiDevice = new CPPCli.NewDevice();
-                    asciiDevice.Name = "ASCII Vx Translator Service";
-                    //asciiDevice.Id = _settings.IntegrationId;
-                    if (!string.IsNullOrEmpty(_settings.EthernetSettings.Address))
-                        asciiDevice.Ip = _settings.EthernetSettings.Address;
-                    else asciiDevice.Ip = localIp;
-                    asciiDevice.ShouldAutoCommission = true;
-                    asciiDevice.Type = CPPCli.Device.Types.External;
-                    CPPCli.Results.Value ret = system.AddDevice(asciiDevice);
-                    if (ret == CPPCli.Results.Value.OK)
-                    {
-                        try
+                        List<CPPCli.Device> devices = system.GetDevices();
+                        if (devices != null)
                         {
-                            List<CPPCli.Device> devices = system.GetDevices();
-                            if (devices != null)
-                            {
-                                thisDevice = devices.Find(x => (x.Ip == localIp && x.Type == CPPCli.Device.Types.External && x.Name == "ASCII Vx Translator Service"));
-                            }
+                            thisDevice = devices.Find(x => (x.Ip == localIp && x.Type == CPPCli.Device.Types.External));
                         }
-                        catch { };
-                        if (thisDevice != null)
+                    }
+                    catch { };
+                    // if we are not registered, then call AddDevice to register us with the system
+                    if (thisDevice == null)
+                    {
+                        CPPCli.NewDevice asciiDevice = new CPPCli.NewDevice();
+                        asciiDevice.Name = deviceName;
+                        //asciiDevice.Id = _settings.IntegrationId;
+                        if (!string.IsNullOrEmpty(_settings.EthernetSettings.Address))
+                            asciiDevice.Ip = _settings.EthernetSettings.Address;
+                        else asciiDevice.Ip = localIp;
+                        asciiDevice.ShouldAutoCommission = true;
+                        asciiDevice.Type = CPPCli.Device.Types.External;
+                        CPPCli.Results.Value ret = system.AddDevice(asciiDevice);
+                        if (ret == CPPCli.Results.Value.OK)
                         {
-                            _settings.IntegrationId = thisDevice.Id;
-                            Trace.WriteLineIf(_debugLevel > 0, "Integration registered with Vx: " + thisDevice.Id);
+                            try
+                            {
+                                List<CPPCli.Device> devices = system.GetDevices();
+                                if (devices != null)
+                                {
+                                    thisDevice = devices.Find(x => (x.Ip == localIp && x.Type == CPPCli.Device.Types.External && x.Name == deviceName));
+                                }
+                            }
+                            catch { };
+                            if (thisDevice != null)
+                            {
+                                _settings.IntegrationId = thisDevice.Id;
+                                Trace.WriteLineIf(_debugLevel > 0, "Integration registered with Vx: " + thisDevice.Name + " : " + thisDevice.Id);
+                            }
+                            else
+                            {
+                                Trace.WriteLineIf(_debugLevel > 0, "ERROR: unable to retrieve integrationId from core after registration.");
+                            }
                         }
                         else
                         {
-                            Trace.WriteLineIf(_debugLevel > 0, "ERROR: unable to retrieve integrationId from core after registration.");
+                            Trace.WriteLineIf(_debugLevel > 0, "Failed to register Integration with Vx or find previous registration");
                         }
                     }
                     else
                     {
-                        Trace.WriteLineIf(_debugLevel > 0, "Failed to register Integration with Vx or find previous registration");
+                        _settings.IntegrationId = thisDevice.Id;
+                        Trace.WriteLineIf(_debugLevel > 0, "Integration already registered with Vx: " + thisDevice.Name + " : " + thisDevice.Id);
                     }
-                }
-                else
-                {
-                    _settings.IntegrationId = thisDevice.Id;
-                    Trace.WriteLineIf(_debugLevel > 0, "Integration already registered with Vx: " + _settings.IntegrationId);
                 }
             }
         }
@@ -320,103 +465,144 @@ namespace ASCIIEvents
         {
             if (_customSituations == null)
                 return;
-            CPPCli.VXSystem system = GetVxSystem();
-            if (system == null)
-                return;
-
-            bool situationsAddedOrModified = false;
-            foreach (CustomSituation custSit in _customSituations)
+            lock (_vxSystemLock)
             {
-                CPPCli.Situation vxSit = null;
-                try
+                CPPCli.VXSystem system = GetVxSystem();
+                if (system == null)
+                    return;
+
+                bool situationsAddedOrModified = false;
+                foreach (CustomSituation custSit in _customSituations)
                 {
-                    lock(_situationLock)
+                    CPPCli.Situation vxSit = null;
+                    try
                     {
                         vxSit = _situations.Find(x => x.Type == custSit.SituationType);
                     }
-                }
-                catch { };
+                    catch { };
 
-                if (vxSit == null)
-                {
-                    CPPCli.NewSituation newSit = new CPPCli.NewSituation();
-                    newSit.IsAckNeeded = custSit.AckNeeded;
-                    //newSit.AudibleLoopDelay = 2;
-                    newSit.UseAudibleNotification = custSit.Audible;
-                    //newSit.AudiblePlayCount = 1; //not in custom xml
-                    newSit.AutoAcknowledge = custSit.AutoAcknowledge;
-                    newSit.ShouldExpandBanner = custSit.DisplayBanner;
-                    newSit.ShouldLog = custSit.Log;
-                    newSit.Name = custSit.Name;
-                    newSit.ShouldNotify = custSit.Notify;
-                    newSit.Severity = custSit.Severity;
-                    //newSit.SnoozeIntervals = null;
-                    //newSit.SourceDeviceId = null; //set when pushing to vx.
-                    newSit.Type = custSit.SituationType;
-                    CPPCli.Results.Value addRes = system.AddSituation(newSit);
-                    if (addRes == CPPCli.Results.Value.OK)
+                    if (vxSit == null)
                     {
-                        Trace.WriteLineIf(_debugLevel > 0, "Added custom situation: " + newSit.Type);
-                        situationsAddedOrModified = true; //at least one was added.
+                        if (AddSituation(custSit))
+                        {
+                            Trace.WriteLineIf(_debugLevel > 0, "Added custom situation: " + custSit.SituationType);
+                            situationsAddedOrModified = true; //at least one was added.
+                        }
                     }
-                    newSit = null;
+                    else
+                    {
+                        bool modified = false;
+                        //Custom Sit is already in the system... 
+                        // see if our xml version differs and patch each difference
+                        if (custSit.AckNeeded != vxSit.IsAckNeeded)
+                        {
+                            vxSit.IsAckNeeded = custSit.AckNeeded;
+                            modified = true;
+                        }
+                        if (custSit.AutoAcknowledge != vxSit.AutoAcknowledge)
+                        {
+                            vxSit.AutoAcknowledge = custSit.AutoAcknowledge;
+                            modified = true;
+                        }
+                        if (custSit.Audible != vxSit.UseAudibleNotification)
+                        {
+                            vxSit.UseAudibleNotification = custSit.Audible;
+                            modified = true;
+                        }
+                        if (custSit.DisplayBanner != vxSit.ShouldExpandBanner)
+                        {
+                            vxSit.ShouldExpandBanner = custSit.DisplayBanner;
+                            modified = true;
+                        }
+                        if (custSit.Log != vxSit.ShouldLog)
+                        {
+                            vxSit.ShouldLog = custSit.Log;
+                            modified = true;
+                        }
+                        if (custSit.Name != vxSit.Name)
+                        {
+                            vxSit.Name = custSit.Name;
+                            modified = true;
+                        }
+                        if (custSit.Notify != vxSit.ShouldNotify)
+                        {
+                            vxSit.ShouldNotify = custSit.Notify;
+                            modified = true;
+                        }
+                        if (custSit.Severity != vxSit.Severity)
+                        {
+                            vxSit.Severity = custSit.Severity;
+                            modified = true;
+                        }
+                        // VXINT-1123, SourceDeviceId - must delete and re-add if this
+                        // changes since VxSituation SourceDeviceId is read only
+                        if (! string.IsNullOrEmpty(custSit.SourceDeviceId))
+                        {
+                            if (custSit.SourceDeviceId == "USE_INTEGRATION_ID")
+                            {
+                                custSit.SourceDeviceId = _settings.IntegrationId;
+                            }
+                            if (custSit.SourceDeviceId != vxSit.SourceDeviceId)
+                            {
+                                system.DeleteSituation(vxSit);
+                                AddSituation(custSit);
+                                situationsAddedOrModified = true;
+                            }
+                        }
+                        if (modified)
+                        {
+                            Trace.WriteLineIf(_debugLevel > 0, "Modified custom situation: " + vxSit.Type);
+                            situationsAddedOrModified = true;
+                        }
+                    }
                 }
-                else
+                if (situationsAddedOrModified)
                 {
-                    bool modified = false;
-                    //Custom Sit is already in the system... 
-                    // see if our xml version differs and patch each difference
-                    if (custSit.AutoAcknowledge != vxSit.AutoAcknowledge)
-                    {
-                        vxSit.AutoAcknowledge = custSit.AutoAcknowledge;
-                        modified = true;
-                    }
-                    if (custSit.Audible != vxSit.UseAudibleNotification)
-                    {
-                        vxSit.UseAudibleNotification = custSit.Audible;
-                        modified = true;
-                    }
-                    if (custSit.DisplayBanner != vxSit.ShouldExpandBanner)
-                    {
-                        vxSit.ShouldExpandBanner = custSit.DisplayBanner;
-                        modified = true;
-                    }
-                    if (custSit.Log != vxSit.ShouldLog)
-                    {
-                        vxSit.ShouldLog = custSit.Log;
-                        modified = true;
-                    }
-                    if (custSit.Name != vxSit.Name)
-                    {
-                        vxSit.Name = custSit.Name;
-                        modified = true;
-                    }
-                    if (custSit.Notify != vxSit.ShouldNotify)
-                    {
-                        vxSit.ShouldNotify = custSit.Notify;
-                        modified = true;
-                    }
-                    if (custSit.Severity != vxSit.Severity)
-                    {
-                        vxSit.Severity = custSit.Severity;
-                        modified = true;
-                    }
-                    if (modified)
-                    {
-                        Trace.WriteLineIf(_debugLevel > 0, "Modified custom situation: " + vxSit.Type);
-                        situationsAddedOrModified = true;
-                    }
-                }
-            }
-            if (situationsAddedOrModified)
-            {
-                // refresh situations now that one or more have been added
-                lock(_situationLock)
-                {
+                    // refresh situations now that one or more have been added
                     _situations = _vxSystem.GetSituations();
                 }
             }
         }
+
+        private bool AddSituation(CustomSituation custSit)
+        {
+            bool success = false;
+            lock (_vxSystemLock)
+            {
+                CPPCli.VXSystem system = GetVxSystem();
+                if (system == null)
+                    return false;
+
+                CPPCli.NewSituation newSit = new CPPCli.NewSituation();
+                newSit.IsAckNeeded = custSit.AckNeeded;
+                //newSit.AudibleLoopDelay = 2;
+                newSit.UseAudibleNotification = custSit.Audible;
+                //newSit.AudiblePlayCount = 1; //not in custom xml
+                newSit.AutoAcknowledge = custSit.AutoAcknowledge;
+                newSit.ShouldExpandBanner = custSit.DisplayBanner;
+                newSit.ShouldLog = custSit.Log;
+                newSit.Name = custSit.Name;
+                newSit.ShouldNotify = custSit.Notify;
+                newSit.Severity = custSit.Severity;
+                //newSit.SnoozeIntervals = null;
+                // VXINT-1123, add SourceDeviceId
+                if (! string.IsNullOrEmpty(custSit.SourceDeviceId))
+                {
+                    if (custSit.SourceDeviceId == "USE_INTEGRATION_ID")
+                        newSit.SourceDeviceId = _settings.IntegrationId;
+                    else
+                        newSit.SourceDeviceId = custSit.SourceDeviceId;
+                }
+                newSit.Type = custSit.SituationType;
+                CPPCli.Results.Value addRes = system.AddSituation(newSit);
+                if (addRes == CPPCli.Results.Value.OK)
+                {
+                    success = true;
+                }
+            }
+            return success;
+        }
+
         #endregion
 
         private void ListenASCIISerialThread()
@@ -424,6 +610,12 @@ namespace ASCIIEvents
             SerialPort serialPort = null;
 
             string commandStr = string.Empty;
+            Session serialSession = new Session("SerialSession");
+
+            {
+                lock(_sessionLock)
+                _sessions.Add(serialSession);
+            }
 
             while (!_stopping)
             {
@@ -431,64 +623,41 @@ namespace ASCIIEvents
                 {
                     try
                     {
-                        if (_posMode)
+                        // don't process or read chars until wait time is up
+                        if (DateTime.Now > _commandDelayUntilTime)
                         {
-                            commandStr += Convert.ToChar(serialPort.ReadChar());
-
-                            if (AtPOSDelimiter(commandStr))
+                            int rawChar = serialPort.ReadChar();
+                            //Trace.WriteIf(_debugLevel > 1, " " + rawChar.ToString("x") + " ");
+                            char charRead = Convert.ToChar(rawChar);
+                            commandStr += charRead;
+                            Trace.WriteLineIf(_debugLevel > 2, "Serial receive : " + charRead);
+                            if (FindCommandDelimiter(commandStr))
                             {
-                                if (FindPOSKeyWord(commandStr))
+                                string response = string.Empty;
+
+                                Trace.WriteLineIf(_debugLevel > 0, "Command Delimiter found, Processing Command: " + commandStr);
+                                bool cmdFound = ProcessCommand(commandStr, out response, ref serialSession);
+                                if (cmdFound)
                                 {
-                                    InjectPOSEvent(commandStr, true);
                                     commandStr = string.Empty;
                                 }
-                            }
-                            else if (AtLineDelimiter(commandStr))
-                            {
-                                InjectPOSEvent(commandStr, false);
-                            }
 
-                            if (commandStr.Length > _settings.POSSettings.MaxReceiptLength)
+                                if (response != string.Empty)
+                                {
+                                    Trace.WriteLineIf(_debugLevel > 0, "ProcessCommand response: " + response);
+                                    serialPort.Write(response);
+                                }
+                            }
+                            
+                            if (commandStr.Length > MAX_ASCII_COMMAND_LENGTH)
                             {
-                                commandStr = commandStr.Substring(1); // remove first char
+                                commandStr = string.Empty; // clear it if it gets too large
                             }
                         }
                         else
                         {
-                            // don't process or read chars until wait time is up
-                            if (DateTime.Now > _commandDelayUntilTime)
-                            {
-                                int rawChar = serialPort.ReadChar();
-                                //Trace.WriteIf(_debugLevel > 1, " " + rawChar.ToString("x") + " ");
-                                char charRead = Convert.ToChar(rawChar);
-                                commandStr += charRead;
-                                //Trace.WriteLineIf(_debugLevel > 1, "Char read in : " + charRead);
-                                if (FindCommandDelimiter(commandStr))
-                                {
-                                    string response = string.Empty;
-
-                                    Trace.WriteLineIf(_debugLevel > 0, "Command Delimiter found, Processing Command: " + commandStr);
-                                    bool cmdFound = ProcessCommand(commandStr, out response);
-                                    if (cmdFound)
-                                    {
-                                        commandStr = string.Empty;
-                                        if ((cmdFound) && (response != string.Empty))
-                                        {
-                                            Trace.WriteLineIf(_debugLevel > 0, "ProcessCommand response: " + response);
-                                            serialPort.Write(response);
-                                        }
-                                    }
-                                }
-                                else if (commandStr.Length > MAX_ASCII_COMMAND_LENGTH)
-                                {
-                                    commandStr = string.Empty; // clear it if it gets too large
-                                }
-                            }
-                            else
-                            {
-                                Trace.WriteLineIf(_debugLevel > 0, DateTime.Now.ToString() + " Wait command in effect, until " + _commandDelayUntilTime.ToString());
-                                Thread.Sleep(1000);
-                            }
+                            Trace.WriteLineIf(_debugLevel > 0, DateTime.Now.ToString() + " Wait command in effect, until " + _commandDelayUntilTime.ToString());
+                            Thread.Sleep(1000);
                         }
                     }
                     catch (Exception e)
@@ -519,28 +688,161 @@ namespace ASCIIEvents
             }
             if (serialPort != null)
                 serialPort.Close();
+
+            {
+                lock(_sessionLock)
+                _sessions.Remove(serialSession);
+            }
         }
 
+        // This thread has been modified for handling sessions as of version 2.0.5.0.  
+        // The idea here is to overwrite previous commands with the most recent one.
+        // For example, if a preset command comes in, a pan left should be overwritten
+        // This speeds execution but causes several potential issues:
+        // 1.  If the intention is to go to a preset then pan left, the preset may not make
+        //     it all the way to its destination if the pan left comes in too fast.  This should be 
+        //     acceptable as long as we do not delay the preset command getting to the device.
+        // 2.  It is possible for the camera number to change if commands for different cameras
+        //     come in before this thread executes.  This would be a loss of a ptz command.
+        // Note also that scripts are handled in place and could possibly interfere with these commands
         private void ProcessPTZCommandThread()
         {
             while (!_stopping)
             {
                 PTZInfo ptz = null;
-                Thread.Sleep(50);
-                lock (_lockPTZCommand)
+                bool ptzCommand = false;
+                bool irisCommand = false;
+                bool focusCommand = false;
+                bool patternCommand = false;
+                bool presetCommand = false;
+                Thread.Sleep(5);
+                // look for first session with PTZ command and send
+                // do not stay here and process each session, only do
+                // one per loop.  Theoretically this could starve a session
+                // but the likelihood is low that multiple sessions will
+                // be active simultaneously to the point where starvation occurs
+                foreach(Session session in _sessions)
                 {
-                    if (_newPTZCommand)
+                    lock (session.ptzLock)
                     {
-                        ptz = new PTZInfo(_currentPTZInfo);
-                        _newPTZCommand = false;
+                        // if no ptz flags set
+                        if (! session.ptzInfo.InProgress())
+                        {
+                            if (session.ptzHoldList.Count > 0)
+                            {
+                                session.ptzInfo = session.ptzHoldList.FirstOrDefault();
+                                if (session.ptzInfo != null)
+                                {
+                                    session.ptzHoldList.Remove(session.ptzInfo);
+                                }
+                                //else session.ptzInfo = new PTZInfo();
+                            }
+                        }
+
+                        if (session.ptzInfo.newPanCommand)
+                        {
+                            // clone ptz info to send
+                            ptz = new PTZInfo(session.ptzInfo);
+                            session.ptzInfo.newPanCommand = false;
+                            ptzCommand = true;
+                        }
+                        if (session.ptzInfo.newTiltCommand)
+                        {
+                            // clone ptz info to send
+                            if (ptz == null)
+                                ptz = new PTZInfo(session.ptzInfo);
+                            session.ptzInfo.newTiltCommand = false;
+                            ptzCommand = true;
+                        }
+                        if (session.ptzInfo.newZoomCommand)
+                        {
+                            // clone ptz info to send
+                            if (ptz == null)
+                                ptz = new PTZInfo(session.ptzInfo);
+                            session.ptzInfo.newZoomCommand = false;
+                            ptzCommand = true;
+                        }
+                        if (session.ptzInfo.newIrisCommand)
+                        {
+                            // clone ptz info to send
+                            if (ptz == null)
+                                ptz = new PTZInfo(session.ptzInfo);
+                            session.ptzInfo.newIrisCommand = false;
+                            irisCommand = true;
+                        }
+                        if (session.ptzInfo.newFocusCommand)
+                        {
+                            // clone ptz info to send
+                            if (ptz == null)
+                                ptz = new PTZInfo(session.ptzInfo);
+                            session.ptzInfo.newFocusCommand = false;
+                            focusCommand = true;
+                        }
+                        if (session.ptzInfo.newPatternCommand)
+                        {
+                            // clone ptz info to send
+                            if (ptz == null)
+                                ptz = new PTZInfo(session.ptzInfo);
+                            session.ptzInfo.newPatternCommand = false;
+                            patternCommand = true;
+                        }
+                        if (session.ptzInfo.newPresetCommand)
+                        {
+                            // clone ptz info to send
+                            if (ptz == null)
+                                ptz = new PTZInfo(session.ptzInfo);
+                            session.ptzInfo.newPresetCommand = false;
+                            presetCommand = true;
+                        }
+
+                        if (ptz != null)
+                            break;
                     }
                 }
-                // do this out of lock so bytes may be written to _currentPTZInfo
+
+                // do this out of session lock
                 if (ptz != null)
                 {
-                    if (ptz.StoppingPTZ())
-                        SendPTZStop();
-                    else SendPTZCommand(ptz);
+                    // preset and pattern commands override ptz, focus or iris but we
+                    // may have ptz, focus or iris come in after a preset or pattern
+                    // so we execute the preset or pattern first, then perform
+                    // the other ptz functions if they are present
+                    if (presetCommand || patternCommand)
+                    {
+                        if (patternCommand)
+                        {
+                            SendGotoPattern(ptz.camera, ptz.pattern);
+                        }
+                        if (presetCommand)
+                        {
+                            SendGotoPreset(ptz.camera, ptz.preset);
+                        }
+                    }
+                    
+                    // This will stop a preset or pattern.  The only way these
+                    // bits are set is if one of these commands came in after
+                    // the preset or pattern command, so stopping them is
+                    // appropriate
+                    if (ptzCommand || irisCommand || focusCommand)
+                    {
+                        if (ptz.StoppingPTZ())
+                            SendPTZStop(ptz);
+                        else
+                        {
+                            if (ptzCommand)
+                            {
+                                SendPTZCommand(ptz);
+                            }
+                            if (irisCommand)
+                            {
+                                SendIrisCommand(ptz);
+                            }
+                            if (focusCommand)
+                            {
+                                SendFocusCommand(ptz);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -551,17 +853,20 @@ namespace ASCIIEvents
             int intervalMonitorUpdate = 3 * 60 ; // 3 minutes intervals
             int intervalDataSourceUpdate = 4 * 60; // 4 minutes intervals
             int intervalSituationUpdate = 30 * 60; // 30 minutes interval (should not need to do this)
+            int intervalSystemCheck = 2 * 60; // 2 minutes intervals
 
             TimeSpan monitorTimeSpan = new TimeSpan(0, 0, intervalMonitorUpdate);
             TimeSpan dataSourceTimeSpan = new TimeSpan(0, 0, intervalDataSourceUpdate);
             TimeSpan situationTimeSpan = new TimeSpan(0, 0, intervalSituationUpdate);
+            TimeSpan systemCheckTimeSpan = new TimeSpan(0, 0, intervalSystemCheck);
 
             DateTime nextMonitorUpdate = DateTime.Now + monitorTimeSpan;
             DateTime nextDataSourceUpdate = DateTime.Now + dataSourceTimeSpan;
             DateTime nextSituationUpdate = DateTime.Now + situationTimeSpan;
+            DateTime nextSystemCheck = DateTime.Now + systemCheckTimeSpan;
 
             while (!_stopping)
-            {       
+            {
                 Thread.Sleep(sleepInterval);
                 DateTime now = DateTime.Now;
                 if (now > nextMonitorUpdate)
@@ -571,10 +876,13 @@ namespace ASCIIEvents
                     List<CPPCli.Monitor> monitors = null;
                     try
                     {
-                        CPPCli.VXSystem system = GetVxSystem();
-                        if (system != null)
+                        lock (_vxSystemLock)
                         {
-                            monitors = system.GetMonitors();
+                            CPPCli.VXSystem system = GetVxSystem();
+                            if (system != null)
+                            {
+                                monitors = system.GetMonitors();
+                            }
                         }
                     }
                     catch { };
@@ -582,8 +890,8 @@ namespace ASCIIEvents
                     if (monitors != null)
                     {
                         DateTime timeUpdate = DateTime.Now;
-                        Trace.WriteLineIf((_debugLevel > 0), timeUpdate.ToString() + " Update Monitors");
-                        lock (_monitorLock)
+                        Trace.WriteLineIf((_debugLevel > 0), timeUpdate.ToString() + " Update Monitors " + monitors.Count);
+                        lock (_vxSystemLock)
                         {
                             _monitors = monitors;
                         }
@@ -598,10 +906,13 @@ namespace ASCIIEvents
                     List<CPPCli.DataSource> datasources = null;
                     try
                     {
-                        CPPCli.VXSystem system = GetVxSystem();
-                        if (system != null)
+                        lock (_vxSystemLock)
                         {
-                            datasources = system.GetDataSources(); ;
+                            CPPCli.VXSystem system = GetVxSystem();
+                            lock (_vxSystemLock)
+                            {
+                                datasources = system.GetDataSources(); ;
+                            }
                         }
                     }
                     catch { };
@@ -609,8 +920,8 @@ namespace ASCIIEvents
                     if (datasources != null)
                     {
                         DateTime timeUpdate = DateTime.Now;
-                        Trace.WriteLineIf((_debugLevel > 0), timeUpdate.ToString() + " Update DataSources");
-                        lock (_datasourceLock)
+                        Trace.WriteLineIf((_debugLevel > 0), timeUpdate.ToString() + " Update DataSources " + datasources.Count);
+                        lock (_vxSystemLock)
                         {
                             _datasources = datasources;
                         }
@@ -625,10 +936,13 @@ namespace ASCIIEvents
                     List<CPPCli.Situation> situations = null;
                     try
                     {
-                        CPPCli.VXSystem system = GetVxSystem();
-                        if (system != null)
+                        lock (_vxSystemLock)
                         {
-                            situations = system.GetSituations();
+                            CPPCli.VXSystem system = GetVxSystem();
+                            if (system != null)
+                            {
+                                situations = system.GetSituations();
+                            }
                         }
                     }
                     catch { };
@@ -636,19 +950,45 @@ namespace ASCIIEvents
                     if (situations != null)
                     {
                         DateTime timeUpdate = DateTime.Now;
-                        Trace.WriteLineIf((_debugLevel > 0), timeUpdate.ToString() + " Update Situations");
-                        lock (_situationLock)
+                        Trace.WriteLineIf((_debugLevel > 0), timeUpdate.ToString() + " Update Situations " + situations.Count);
+                        lock (_vxSystemLock)
                         {
                             _situations = situations;
                         }
                     }
                     nextSituationUpdate = DateTime.Now + situationTimeSpan;
                 }
+
+                // Force reconnection?
+                if (now > nextSystemCheck)
+                {
+                    lock (_vxSystemLock)
+                    {
+                        if (((_monitors == null) || (_monitors.Count == 0)) ||
+                         ((_datasources == null) || (_datasources.Count == 0)) ||
+                         ((_situations == null) || (_situations.Count == 0)))
+                        {
+                            Trace.WriteLineIf((_debugLevel > 0), "Forcing reconnect to VideoXpert");
+                            ForceReconnect();
+                            nextMonitorUpdate = DateTime.Now;
+                            nextDataSourceUpdate = DateTime.Now;
+                            nextSituationUpdate = DateTime.Now;
+                        }
+                    }
+
+                    nextSystemCheck = DateTime.Now + systemCheckTimeSpan;
+                }
             }
         }
 
         private void ListenASCIIEthernetThread()
         {
+            Session udpSession = new Session("UDPSession");
+            {
+                lock(_sessionLock)
+                _sessions.Add(udpSession);
+            }
+
             UdpClient listener = null;
 
             string commandStr = string.Empty;
@@ -662,6 +1002,7 @@ namespace ASCIIEvents
                         Byte[] receiveBytes = listener.Receive(ref anyRemoteEndPoint);
                         string receivedStr = Encoding.ASCII.GetString(receiveBytes, 0, receiveBytes.Length);
                         commandStr += receivedStr;
+                        Trace.WriteLineIf(_debugLevel > 2, "Ethernet receive : " + receivedStr);
                     }
                     catch (Exception e)
                     {
@@ -691,15 +1032,19 @@ namespace ASCIIEvents
                             commandStr = remainder; // keep what is left for next iteration (may be partial)
                             Trace.WriteLineIf(_debugLevel > 0, "Command Delimiter found, Processing Command: " + command);
 
-                            cmdFound = ProcessCommand(command, out response);
+                            cmdFound = ProcessCommand(command, out response, ref udpSession);
+
+                            if (response != string.Empty)
+                            {
+                                // send response back
+                                Trace.WriteLineIf(_debugLevel > 0, "Command Response: " + response);
+                                //Byte[] sendBytes = Encoding.UTF8.GetBytes (response);
+                                //listener.Send(sendBytes, sendBytes.Length);
+                            }
+
                             // if last command was wait command, kick out of while
                             if (_commandDelayUntilTime > DateTime.Now)
                                 break;
-                        }
-                        if ((cmdFound)&&(response != string.Empty))
-                        {
-                            // todo: send response back
-                            Trace.WriteLineIf(_debugLevel > 0, "Command Response: " + response);
                         }
                     }
                     else
@@ -721,6 +1066,11 @@ namespace ASCIIEvents
 
             if (listener != null)
                 listener.Close();
+
+            {
+                lock(_sessionLock)
+                _sessions.Remove(udpSession);
+            }
         }
 
         private UdpClient OpenUDPListener()
@@ -732,9 +1082,11 @@ namespace ASCIIEvents
                 {
                     address = IPAddress.Parse(_settings.EthernetSettings.Address);
                 }
-                IPEndPoint endPoint = new IPEndPoint(address, _settings.EthernetSettings.Port);
+                int port = Convert.ToInt32(_settings.EthernetSettings.Port);
+                IPEndPoint endPoint = new IPEndPoint(address, port);
                 UdpClient listener = new UdpClient(endPoint);
                 listener.Client.ReceiveTimeout = 500; // 500 ms
+                Trace.WriteLineIf((_debugLevel > 0), "Listening for UDP at address: " + _settings.EthernetSettings.Address + " port: " + _settings.EthernetSettings.Port);
                 return listener;
             }
             catch (Exception e)
@@ -742,6 +1094,228 @@ namespace ASCIIEvents
                 Trace.WriteLineIf((_debugLevel > 0), "Failed to open UDP port " + _settings.EthernetSettings.Port + " Exception: " + e.Message);
                 return null; 
             }
+        }
+
+        private void ListenASCIIEthernetThreadTCP()
+        {
+            Socket listener = null;
+
+            string commandStr = string.Empty;
+            while (!_stopping)
+            {
+                if (listener != null)
+                {
+                    try
+                    {
+                        Socket handlerSocket = listener.Accept();
+                        if (handlerSocket != null)
+                        {
+                            Thread clientThread = new Thread(new ParameterizedThreadStart(HandleTCPClient));
+                            clientThread.IsBackground = true;
+                            clientThread.Start(handlerSocket);
+                        }
+                        else
+                        {
+                            Thread.Sleep(5);   // very short sleep to release cpu
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Trace.WriteLineIf((_debugLevel > 0), "TCP Listener exception: " + e.Message);
+                    }
+                }
+                else // listener is null
+                {
+                    listener = OpenTCPListener();
+                    Thread.Sleep(3000);
+                }
+            }
+
+            if (listener != null)
+                listener.Close();
+        }
+
+        private Socket OpenTCPListener()
+        {
+            try
+            {
+                IPAddress address = IPAddress.Any;
+                if (_settings.EthernetSettings.Address != string.Empty)
+                {
+                    address = IPAddress.Parse(_settings.EthernetSettings.Address);
+                }
+                int port = Convert.ToInt32(_settings.EthernetSettings.Port);
+                IPEndPoint endPoint = new IPEndPoint(address, port);
+                Socket listenSocket = new Socket(AddressFamily.InterNetwork, 
+                                        SocketType.Stream,
+                                        ProtocolType.Tcp);
+                listenSocket.Bind(endPoint);
+                listenSocket.Listen(100);
+                Trace.WriteLineIf((_debugLevel > 0), "Listening for TCP at address: " + _settings.EthernetSettings.Address + " port: " + _settings.EthernetSettings.Port);
+
+                return listenSocket;
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLineIf((_debugLevel > 0), "Failed to open TCP port " + _settings.EthernetSettings.Port + " Exception: " + e.Message);
+                return null; 
+            }
+        }
+
+        private void HandleTCPClient(object clientSocket)
+        {
+            Session tcpSession;
+            if (isTCPMultiSession)
+            {
+                tcpSession = new Session("TCPSession");
+                {
+                    lock(_sessionLock)
+                    _sessions.Add(tcpSession);
+                }
+
+                Trace.WriteLineIf((_debugLevel > 1), "New " + tcpSession.name + " " + tcpSession.id);
+            }
+            else tcpSession = tcpSingleSession;
+
+            string commandStr = string.Empty;
+            NetworkStream stream = null;
+            TcpClient tcpClient = new TcpClient();
+            try
+            {
+                tcpClient.Client = (Socket)clientSocket;
+                if (tcpClient != null)
+                {
+                    stream = tcpClient.GetStream();
+                }
+
+                if (stream != null)
+                {
+                    byte[] cmdBuffer = new byte[MAX_ASCII_COMMAND_LENGTH];
+
+                    // Set a 100 millisecond timeout for reading.
+                    stream.ReadTimeout = 100;
+                    bool connected = true;
+                    while((! _stopping) && connected)
+                    {
+                        int bytesRead = 0;
+                        try
+                        {
+                            bytesRead = stream.Read(cmdBuffer, 0, cmdBuffer.Length);
+                        }
+                        catch (Exception e)
+                        {
+                            if (e is SocketException)
+                            {
+                                SocketException sExcept = (SocketException)e;
+                                if (sExcept.ErrorCode != 10060) // time out
+                                {
+                                    Trace.WriteLineIf((_debugLevel > 1), "TCP Handler Socket exception: " + e.Message);
+                                    connected = false;
+                                }                             
+                            }
+                            else if (e is IOException)
+                            {
+                                IOException sExcept = (IOException)e;
+                                if ((sExcept.InnerException != null)&&(sExcept.InnerException is SocketException))
+                                {
+                                    SocketException innerExcept = (SocketException)sExcept.InnerException;
+                                    if (innerExcept.ErrorCode != 10060) // time out
+                                    {
+                                        Trace.WriteLineIf((_debugLevel > 1), "TCP Handler Socket exception: " + e.Message);
+                                        connected = false;
+                                    }                             
+                                }
+                            }
+                            else
+                            {
+                                Trace.WriteLineIf((_debugLevel > 0), "TCP Handler Exception: " + e.Message);
+                                connected = false;
+                            }
+                        }
+
+                        if (tcpClient.Client.Poll(0, SelectMode.SelectRead))
+                        {
+                            byte[] checkConn = new byte[1];
+                            if (tcpClient.Client.Receive(checkConn, SocketFlags.Peek) == 0)
+                            {
+                                connected = false;
+                            }
+                        }
+
+                        if ((connected)&&(bytesRead > 0))
+                        {
+                            string receivedStr = Encoding.ASCII.GetString(cmdBuffer, 0, bytesRead);
+                            for (int i = 0; i < bytesRead; i++)
+                                cmdBuffer[i] = 0;
+                            commandStr += receivedStr;
+                            Trace.WriteLineIf(_debugLevel > 2, "TCP Ethernet receive : " + receivedStr);
+
+                            // don't process commands if waiting
+                            if (DateTime.Now > _commandDelayUntilTime)
+                            {
+                                string command = string.Empty;
+                                string remainder = string.Empty;
+                                string response = string.Empty;
+                                bool cmdFound = false;
+                                while (SplitCommandString(commandStr, out command, out remainder))
+                                {
+                                    commandStr = remainder; // keep what is left for next iteration (may be partial)
+                                    Trace.WriteLineIf(_debugLevel > 0, "Command Delimiter found, Processing Command: " + command);
+                                    cmdFound = ProcessCommand(command, out response, ref tcpSession);
+                                    
+                                    // 06/23/2017, for TCP connection we are going to follow UDI Matrix response format
+                                    // which is “AcK” (successful), and “NacK” (unsuccessful).
+                                    if (! string.IsNullOrEmpty(response))
+                                    {
+                                        Byte[] sendBytes = Encoding.UTF8.GetBytes (response);
+                                        stream.Write (sendBytes, 0, sendBytes.Length);                   
+                                    }
+                                    else if (cmdFound)
+                                    {
+                                        Byte[] sendBytes = Encoding.UTF8.GetBytes ("AcK");
+                                        stream.Write (sendBytes, 0, sendBytes.Length);
+                                    }
+                                    // if a full command was processed and not supported send back a NacK
+                                    else //if (string.IsNullOrEmpty(remainder))
+                                    {
+                                        Byte[] sendBytes = Encoding.UTF8.GetBytes ("NacK");
+                                        stream.Write (sendBytes, 0, sendBytes.Length);
+                                    }
+
+                                    // if last command was wait command, kick out of while
+                                    if (_commandDelayUntilTime > DateTime.Now)
+                                        break;
+                                }
+                            }
+                            else
+                            {
+                                //Trace.WriteLineIf(_debugLevel > 0, DateTime.Now.ToString() + " Wait command in effect, until " + _commandDelayUntilTime.ToString());
+                                Thread.Sleep(1000);
+                            }
+
+                            // sanity check, throw out string if it gets too long, max=?
+                            if (commandStr.Length > MAX_ASCII_COMMAND_LENGTH)
+                                commandStr = string.Empty;
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLineIf((_debugLevel > 0), "TCP Handler Thread Exception: " + e.Message);
+            }
+
+            if (stream != null)
+                stream.Close();
+            if (tcpClient != null)
+                tcpClient.Close();
+
+            if (isTCPMultiSession)
+            {
+                lock(_sessionLock)
+                _sessions.Remove(tcpSession);
+            }
+            Trace.WriteLineIf((_debugLevel > 1), tcpSession.name + "  " + tcpSession.id + " ended");
         }
 
         #region ASCII_SERIAL_PORT
@@ -849,51 +1423,24 @@ namespace ASCIIEvents
 
                     try
                     {
-                        if (_posMode)
+                        // don't process or read chars until wait time is up
+                        if (DateTime.Now > _commandDelayUntilTime)
                         {
                             commandStr += ch;
-                            if (AtPOSDelimiter(commandStr))
+                            if (FindCommandDelimiter(commandStr))
                             {
-                                if (FindPOSKeyWord(commandStr))
-                                {
-                                    InjectPOSEvent(commandStr, true);
-                                    commandStr = string.Empty;
-                                }
-                            }
-                            else if (AtLineDelimiter(commandStr))
-                            {
-                                InjectPOSEvent(commandStr, false);
-                                // wait 1 to 4 seconds before looking for next line
-                                int waitTime = rnd.Next(1, 5) * 1000;
-                                Thread.Sleep(waitTime);
-                            }
-
-                            if (commandStr.Length > _settings.POSSettings.MaxReceiptLength)
-                            {
-                                commandStr = commandStr.Substring(1); // remove first char
+                                Trace.WriteLineIf(_debugLevel > 0, "Command Delimiter found, Processing Command: " + commandStr);
+                                string response = string.Empty;
+                                bool cmdFound = ProcessCommand(commandStr, out response, ref testSession);
+                                commandStr = string.Empty;
+                                if (response != string.Empty)
+                                    Trace.WriteLineIf(_debugLevel > 0, "Command Response: " + response);
                             }
                         }
                         else
                         {
-                            // don't process or read chars until wait time is up
-                            if (DateTime.Now > _commandDelayUntilTime)
-                            {
-                                commandStr += ch;
-                                if (FindCommandDelimiter(commandStr))
-                                {
-                                    Trace.WriteLineIf(_debugLevel > 0, "Command Delimiter found, Processing Command: " + commandStr);
-                                    string response = string.Empty;
-                                    bool cmdFound = ProcessCommand(commandStr, out response);
-                                    commandStr = string.Empty;
-                                    if ((cmdFound) && (response != string.Empty))
-                                        Trace.WriteLineIf(_debugLevel > 0, "Command Respose: " + response);
-                                }
-                            }
-                            else
-                            {
-                                Trace.WriteLineIf(_debugLevel > 0, DateTime.Now.ToString() + " Wait command in effect, until " + _commandDelayUntilTime.ToString());
-                                Thread.Sleep(1000);
-                            }
+                            Trace.WriteLineIf(_debugLevel > 0, DateTime.Now.ToString() + " Wait command in effect, until " + _commandDelayUntilTime.ToString());
+                            Thread.Sleep(1000);
                         }
                     }
                     catch (Exception e)
@@ -911,29 +1458,40 @@ namespace ASCIIEvents
         /// <returns>String containing a response to the command (if any).</returns>
         public string ProcessTestCommand(string testCommand)
         {
-            string command = string.Empty;
-            string remainder = string.Empty;
-            while (SplitCommandString(testCommand, out command, out remainder))
+            if (testCommand.ToUpper().Contains("SCRIPT"))
             {
-                testCommand = remainder; // keep what is left for next iteration
-                if (DateTime.Now > _commandDelayUntilTime)
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "Command Delimiter found, Processing Command: " + command);
-
-                    string response = string.Empty;
-                    bool cmdFound = ProcessCommand(command, out response);
-                    if ((cmdFound) && (response != string.Empty))
-                        Trace.WriteLineIf(_debugLevel > 0, "Command Response: " + response);
-                }
-                else // wait command in effect
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "Wait command in effect, tossing out test command");
-                    break;
-                }
+                int scriptNumber = 0;
+                testCommand = testCommand.ToUpper().Replace("SCRIPT","");
+                scriptNumber = Convert.ToInt32(testCommand);
+                ExecuteScript(scriptNumber);
+                return "Script Executed";
             }
-            if (testCommand == string.Empty)
-                return "All Commands Processed";
-            else return "Command remainder: " + testCommand;
+            else
+            {
+                string command = string.Empty;
+                string remainder = string.Empty;
+                while (SplitCommandString(testCommand, out command, out remainder))
+                {
+                    testCommand = remainder; // keep what is left for next iteration
+                    if (DateTime.Now > _commandDelayUntilTime)
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "Command Delimiter found, Processing Command: " + command);
+
+                        string response = string.Empty;
+                        bool cmdFound = ProcessCommand(command, out response, ref testSession);
+                        if ((cmdFound) && (response != string.Empty))
+                            Trace.WriteLineIf(_debugLevel > 0, "Command Response: " + response);
+                    }
+                    else // wait command in effect
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "Wait command in effect, tossing out test command");
+                        break;
+                    }
+                }
+                if (testCommand == string.Empty)
+                    return "All Commands Processed";
+                else return "Command remainder: " + testCommand;
+            }
         }
 
         /// <summary>
@@ -946,7 +1504,7 @@ namespace ASCIIEvents
             string data = string.Empty;
             try
             {
-                lock(_datasourceLock)
+                lock(_vxSystemLock)
                 {
                     if (string.IsNullOrEmpty(partialCameraName))
                     {
@@ -982,7 +1540,7 @@ namespace ASCIIEvents
             string data = string.Empty;
             try
             {
-                lock(_monitorLock)
+                lock (_vxSystemLock)
                 {
                     if (string.IsNullOrEmpty(partialMonitorName))
                     {
@@ -1016,7 +1574,7 @@ namespace ASCIIEvents
         {
             string[] situations = null;
 
-            lock (_situationLock)
+            lock (_vxSystemLock)
             {
                 if (_situations != null)
                 {
@@ -1200,7 +1758,7 @@ namespace ASCIIEvents
             return retString;
         }
 
-        private bool ProcessCommand(string commandStr, out string response)
+        private bool ProcessCommand(string commandStr, out string response, ref Session session)
         {
             bool cmdFound = false;
             response = string.Empty;
@@ -1209,16 +1767,27 @@ namespace ASCIIEvents
             if (commandStr.Length < 2)
             {
                 Trace.WriteLineIf(_debugLevel > 0, "ProcessCommand: commandStr length < 2, exiting " + commandStr.Length);
+                if (! string.IsNullOrEmpty(_nackResponse))
+                {
+                    response = _nackResponse;                    
+                }
                 return cmdFound;
             }
             Command command = new Command();
             string parameter = string.Empty;
             if (GetCommandFromString(commandStr, out command, out parameter))
             {
-                response = HandleCommand(command, parameter);
+                response = HandleCommand(command, parameter, ref session);
                 cmdFound = true;
             }
-
+            else
+            {
+                // no command found
+                if (! string.IsNullOrEmpty(_nackResponse))
+                {
+                    response = _nackResponse;                    
+                }
+            }
             return cmdFound;
         }
 
@@ -1360,7 +1929,7 @@ namespace ASCIIEvents
             return false;
         }
 
-        private string HandleCommand(Command command, string parameter)
+        private string HandleCommand(Command command, string parameter, ref Session session)
         {
             string response = string.Empty;
             int paramInt = 0;
@@ -1372,6 +1941,7 @@ namespace ASCIIEvents
             }
             catch { };
 
+            Trace.WriteIf(_debugLevel > 1, "Cam " + session.selectedCamera + " ");
             Trace.WriteLine("Received Command: " + command.Name + "  " + parameter);
 
             if ((command.Parameter != null)&&(command.Parameter.Type.ToLower().Contains("int")))
@@ -1379,102 +1949,114 @@ namespace ASCIIEvents
                 if ((parameter != "~") && (paramInt < command.Parameter.Min) || (paramInt > command.Parameter.Max))
                 {
                     Trace.WriteLineIf(_debugLevel > 0, "Command " + command.Name + ": param " + paramInt.ToString() + " out of bounds");
+                    if (! string.IsNullOrEmpty(_nackResponse))
+                        response = _nackResponse;                    
                     return response;
                 }
             }
 
+            bool success = true;
             switch (command.Name)
             {
+                case "KeepAlive":
+                    break; // nothing to do, just let Ack happen
                 case "SelectMonitor":
-                    SelectMonitor(paramInt);
+                    session.selectedMonitor = paramInt;
+                    SelectMonitor(session);
                     break;
                 case "SelectCell":
-                    SelectCell(paramInt);
+                    session.selectedCell = paramInt - 1;
+                    SelectCell(session);
                     break;
                 case "SelectCamera":
-                    SelectCamera(paramInt);
+                    session.selectedCamera = paramInt;
+                    SelectCamera(session);
                     break;
                 case "NextCamera":
-                    NextCamera();
+                    NextCamera(session);
                     break;
                 case "PreviousCamera":
-                    PreviousCamera();
+                    PreviousCamera(session);
                     break;
                 case "SingleCameraMode":
-                    SingleCameraMode();
+                    session.selectedCell = 0;
+                    SingleCameraMode(session);
                     break;
                 case "CameraMode2x2":
-                    CameraMode2x2(paramInt);
+                    session.selectedCell = paramInt - 1;
+                    CameraMode2x2(session);
                     break;
                 case "CameraMode3x3":
-                    CameraMode3x3(paramInt);
+                    session.selectedCell = paramInt - 1;
+                    CameraMode3x3(session);
                     break;
                 case "CameraMode4x4":
-                    CameraMode4x4(paramInt);
+                    session.selectedCell = paramInt - 1;
+                    CameraMode4x4(session);
                     break;
                 case "SetCameraLayout":
                     CPPCli.Monitor.Layouts layout = (CPPCli.Monitor.Layouts)(paramInt - 1); // 0 - 17, valid values
-                    SetCameraLayout(layout);
+                    SetCameraLayout(session.selectedMonitor, layout);
                     break;
                 case "Play":
-                    Play();
+                    Play(session);
                     break;
                 case "Stop":
-                    Stop();
+                    Stop(session);
                     break;
                 case "Pause":
-                    Pause();
+                    Pause(session);
                     break;
                 case "FastForward":
-                    FastForward(paramInt);
+                    FastForward(session, paramInt);
                     break;
                 case "Rewind":
-                    Rewind(paramInt);
+                    Rewind(session, paramInt);
                     break;
                 case "Seek":
-                    Seek(parameter);
+                    Seek(session, parameter);
                     break;
                 case "ToggleLive":
-                    ToggleLive();
+                    ToggleLive(session);
                     break;
                 case "PanLeft":
-                    PanLeft(paramInt);
+                    PanLeft(session, paramInt);
                     break;
                 case "PanRight":
-                    PanRight(paramInt);
+                    PanRight(session, paramInt);
                     break;
                 case "TiltUp":
-                    TiltUp(paramInt);
+                    TiltUp(session, paramInt);
                     break;
                 case "TiltDown":
-                    TiltDown(paramInt);
+                    TiltDown(session, paramInt);
                     break;
                 case "Zoom":
-                    Zoom(parameter);
+                    Zoom(session, parameter);
                     break;
                 case "Wide":
-                    Wide(parameter);
+                    Wide(session, parameter);
                     break;
                 case "StopPTZ":
-                    StopPTZ();
+                    StopPTZ(session);
                     break;
                 case "ExecutePattern":
-                    ExecutePattern(paramInt);
+                    ExecutePattern(session, paramInt);
                     break;
                 case "GotoPreset":
-                    GotoPreset(paramInt);
+                    GotoPreset(session, paramInt);
                     break;
                 case "FocusNear":
-                    FocusNear(parameter);
+                    FocusNear(session, parameter);
                     break;
                 case "FocusFar":
-                    FocusFar(parameter);
+                    FocusFar(session, parameter);
                     break;
                 case "IrisOpen":
-                    IrisOpen(parameter);
+                    IrisOpen(session, parameter);
                     break;
                 case "IrisClose":
-                    IrisClose(parameter);
+                    IrisClose(session, parameter);
                     break;
                 case "TriggerAlarm":
                     TriggerAlarm(paramInt);
@@ -1485,121 +2067,130 @@ namespace ASCIIEvents
                 case "Wait":
                     Wait(paramInt);
                     break;
-                case "AuxOn":
-                    AuxOn(paramInt);
-                    break;
-                case "AuxOff":
-                    AuxOff(paramInt);
+                default:
+                    // command not handled or understood
+                    success = false;
                     break;
             }
+
+            if (success)
+            {
+                if (! string.IsNullOrEmpty(_ackResponse))
+                    response = _ackResponse;
+            }
+            else if (! string.IsNullOrEmpty(_nackResponse))
+            {
+                response = _nackResponse;                    
+            }
+
             return response;
         }
 
-        private void SelectMonitor(int monitor)
+        private void SelectMonitor(Session session)
         {
-            _selectedMonitor = monitor;
-            _selectedCell = 0;
-            _selectedCamera = GetCameraInCell(_selectedMonitor, _selectedCell);
+            session.selectedCell = 0;
+            session.selectedCamera = GetCameraInCell(session.selectedMonitor, session.selectedCell);
         }
 
-        private void SelectCell(int cell)
+        private void SelectCell(Session session)
         {
-            // bounds checked before it gets here
-            _selectedCell = cell - 1; // 0 based
-            _selectedCamera = GetCameraInCell(_selectedMonitor, _selectedCell);
+            session.selectedCamera = GetCameraInCell(session.selectedMonitor, session.selectedCell);
         }
 
-        private void SelectCamera(int camera)
+        private void SelectCamera(Session session)
         {
-            // bounds checked before it gets here
-            _selectedCamera = camera;
-            DisplayCameraOnMonitor(_selectedCamera, _selectedMonitor, _selectedCell);
-        }
-
-        private void NextCamera()
-        {
-            if (CameraWithinBounds(_selectedCamera + 1))
-            { 
-                _selectedCamera++;
-                DisplayCameraOnMonitor(_selectedCamera, _selectedMonitor, _selectedCell);
+            try
+            {
+                DisplayCameraOnMonitor(session.selectedCamera, session.selectedMonitor, session.selectedCell);
+            }
+            catch (Exception e)
+            {
+                // todo: diagnose issue being seen here (comes from both Disconnect() and monCell.GoToLive
+                // when camera number has already been selected - may need to debug in VxSDK
+                Trace.WriteLineIf(_debugLevel > 3, "Exception in DisplayCameraOnMonitor " + e.Message);
             }
         }
 
-        private void PreviousCamera()
+        private void NextCamera(Session session)
         {
-            if (CameraWithinBounds(_selectedCamera - 1))
+            if (CameraWithinBounds(session.selectedCamera + 1))
+            { 
+                session.selectedCamera++;
+                DisplayCameraOnMonitor(session.selectedCamera, session.selectedMonitor, session.selectedCell);
+            }
+        }
+
+        private void PreviousCamera(Session session)
+        {
+            if (CameraWithinBounds(session.selectedCamera - 1))
             {
-                _selectedCamera--;
-                DisplayCameraOnMonitor(_selectedCamera, _selectedMonitor, _selectedCell);
+                session.selectedCamera--;
+                DisplayCameraOnMonitor(session.selectedCamera, session.selectedMonitor, session.selectedCell);
             }            
         }
 
-        private void SingleCameraMode()
+        private void SingleCameraMode(Session session)
         {
-            _selectedCell = 0;
             CPPCli.Monitor.Layouts layout = CPPCli.Monitor.Layouts.CellLayout1x1;
-            SetCameraLayout(layout);
+            SetCameraLayout(session.selectedMonitor, layout);
         }
 
-        private void CameraMode2x2(int param)
+        private void CameraMode2x2(Session session)
         {
-            _selectedCell = param - 1;
             CPPCli.Monitor.Layouts layout = CPPCli.Monitor.Layouts.CellLayout2x2;
-            SetCameraLayout(layout);
+            SetCameraLayout(session.selectedMonitor, layout);
         }
 
-        private void CameraMode3x3(int param)
+        private void CameraMode3x3(Session session)
         {
-            _selectedCell = param - 1;
             CPPCli.Monitor.Layouts layout = CPPCli.Monitor.Layouts.CellLayout3x3;
-            SetCameraLayout(layout);
+            SetCameraLayout(session.selectedMonitor, layout);
         }
 
-        private void CameraMode4x4(int param)
+        private void CameraMode4x4(Session session)
         {
-            _selectedCell = param - 1;
             CPPCli.Monitor.Layouts layout = CPPCli.Monitor.Layouts.CellLayout4x4;
-            SetCameraLayout(layout);
+            SetCameraLayout(session.selectedMonitor, layout);
         }
 
-        private void SetCameraLayout(CPPCli.Monitor.Layouts layout)
+        private void SetCameraLayout(int Monitor, CPPCli.Monitor.Layouts layout)
         {
-            if (!SetLayout(_selectedMonitor, layout))
-                Trace.WriteLineIf(_debugLevel > 0, "Failed to set Monitor " + _selectedMonitor + " to layout " + layout.ToString());
-            else Trace.WriteLineIf(_debugLevel > 0, "Monitor " + _selectedMonitor + " layout set to " + layout.ToString());
+            if (!SetLayout(Monitor, layout))
+                Trace.WriteLineIf(_debugLevel > 0, "Failed to set Monitor " + Monitor + " to layout " + layout.ToString());
+            else Trace.WriteLineIf(_debugLevel > 0, "Monitor " + Monitor + " layout set to " + layout.ToString());
         }
 
-        private void Play()
+        private void Play(Session session)
         {
-            ChangePlaySpeed(_selectedCamera, _selectedMonitor, _selectedCell, 1);
+            ChangePlaySpeed(session.selectedCamera, session.selectedMonitor, session.selectedCell, 1);
         }
 
-        private void Stop()
+        private void Stop(Session session)
         {
-            Disconnect(_selectedCamera, _selectedMonitor, _selectedCell);
+            Disconnect(session.selectedMonitor, session.selectedCell);
         }
 
-        private void Pause()
+        private void Pause(Session session)
         {
-            ChangePlaySpeed(_selectedCamera, _selectedMonitor, _selectedCell, 0);
+            ChangePlaySpeed(session.selectedCamera, session.selectedMonitor, session.selectedCell, 0);
         }
 
-        private void FastForward(int speed)
+        private void FastForward(Session session, int speed)
         {
-            ChangePlaySpeed(_selectedCamera, _selectedMonitor, _selectedCell, speed);
+            ChangePlaySpeed(session.selectedCamera, session.selectedMonitor, session.selectedCell, speed);
         }
 
-        private void Rewind(int speed)
+        private void Rewind(Session session, int speed)
         {
-            ChangePlaySpeed(_selectedCamera, _selectedMonitor, _selectedCell, -speed);
+            ChangePlaySpeed(session.selectedCamera, session.selectedMonitor, session.selectedCell, -speed);
         }
 
-        private void Seek(string datetime)
+        private void Seek(Session session, string datetime)
         {
             try
             {
                 DateTime time = DateTime.Parse(datetime);
-                Seek(_selectedCamera, _selectedMonitor, _selectedCell, time);
+                Seek(session.selectedCamera, session.selectedMonitor, session.selectedCell, time);
             }
             catch
             {
@@ -1608,125 +2199,253 @@ namespace ASCIIEvents
             
         }
 
-        private void ToggleLive()
+        private void ToggleLive(Session session)
         {
-            GoToLive(_selectedCamera, _selectedMonitor, _selectedCell);
+            GoToLive(session.selectedCamera, session.selectedMonitor, session.selectedCell);
         }
 
-        private void PanLeft(int speed)
+            // return true unless selected camera still needs to clear ptz info
+            // and we want to ptz a different camera
+        private bool PTZSessionOverWriteOK(Session session)
         {
-            lock(_lockPTZCommand)
+            bool ok = true;
+            if (session.selectedCamera != session.ptzInfo.camera)
             {
-                _currentPTZInfo.pan = ASCIISpeedToVxSpeed(-speed);
-                _newPTZCommand = true;
+                return (! session.ptzInfo.InProgress());
+            }
+            return ok;
+        }
+
+        private void AddToPTZHoldList(Session session, PTZInfo ptzData)
+        {
+            bool updated = false;
+            foreach(PTZInfo listPtzInfo in session.ptzHoldList)
+            {
+                if (listPtzInfo.camera == ptzData.camera)
+                {
+                    // merge new PTZ data into existing
+                    listPtzInfo.Merge(ptzData);
+                    updated = true;
+                }
+            }
+
+            // not found in list so add to list
+            if (! updated)
+            {
+                session.ptzHoldList.Add(ptzData);
             }
         }
 
-        private void PanRight(int speed)
+        private void UpdatePTZSession(Session session, PTZInfo ptzData)
         {
-            lock (_lockPTZCommand)
+            if (session.ptzInfo.camera == 0)
             {
-                _currentPTZInfo.pan = ASCIISpeedToVxSpeed(speed);
-                _newPTZCommand = true;
+                session.ptzInfo = ptzData;
             }
-        }
-
-        private void TiltUp(int speed)
-        {
-            lock (_lockPTZCommand)
+            else if (PTZSessionOverWriteOK(session))
             {
-                _currentPTZInfo.tilt = ASCIISpeedToVxSpeed(speed);
-                _newPTZCommand = true;
-            }
-        }
-
-        private void TiltDown(int speed)
-        {
-            lock (_lockPTZCommand)
-            {
-                _currentPTZInfo.tilt = ASCIISpeedToVxSpeed(-speed);
-                _newPTZCommand = true;
-            }
-        }
-
-        private void Zoom(string param)
-        {
-            lock (_lockPTZCommand)
-            {
-                if (param == "~")
-                _currentPTZInfo.zoom = 0;
+                if (session.ptzInfo.camera != ptzData.camera)
+                    session.ptzInfo = ptzData;
                 else
-                    _currentPTZInfo.zoom = 1;
-                _newPTZCommand = true;
+                    session.ptzInfo.Merge(ptzData);
+            }
+            else
+            {
+                AddToPTZHoldList(session, ptzData);
             }
         }
 
-        private void Wide(string param)
+        private void PanLeft(Session session, int speed)
         {
-            lock (_lockPTZCommand)
+            lock(session.ptzLock)
             {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                ptzData.pan = ASCIISpeedToVxSpeed(-speed);
+                ptzData.newPanCommand = true;
 
+                UpdatePTZSession(session, ptzData);
+            }
+        }
+
+        private void PanRight(Session session, int speed)
+        {
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                ptzData.pan = ASCIISpeedToVxSpeed(speed);
+                ptzData.newPanCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
+        }
+
+        private void TiltUp(Session session, int speed)
+        {
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                ptzData.tilt = ASCIISpeedToVxSpeed(speed);
+                ptzData.newTiltCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
+        }
+
+        private void TiltDown(Session session, int speed)
+        {
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                ptzData.tilt = ASCIISpeedToVxSpeed(-speed);
+                ptzData.newTiltCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
+        }
+
+        private void Zoom(Session session, string param)
+        {
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
                 if (param == "~")
-                _currentPTZInfo.zoom = 0;
+                    ptzData.zoom = 0;
                 else
-                    _currentPTZInfo.zoom = -1;
-                _newPTZCommand = true;
+                    ptzData.zoom = 1;
+                ptzData.newZoomCommand = true;
+
+                UpdatePTZSession(session, ptzData);
             }
         }
 
-        private void StopPTZ()
+        private void Wide(Session session, string param)
         {
-            lock (_lockPTZCommand)
+            lock(session.ptzLock)
             {
-                _currentPTZInfo.Clear();
-                _newPTZCommand = true;
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                if (param == "~")
+                    ptzData.zoom = 0;
+                else
+                    ptzData.zoom = -1;
+                ptzData.newZoomCommand = true;
+
+                UpdatePTZSession(session, ptzData);
             }
         }
 
-        private void ExecutePattern(int pattern)
+        private void StopPTZ(Session session)
         {
-            SendGotoPattern(pattern);
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                // update all values to zero
+                ptzData.newPanCommand = true;
+                ptzData.newTiltCommand = true;
+                ptzData.newZoomCommand = true;
+                ptzData.newIrisCommand = true;
+                ptzData.newFocusCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
         }
 
-        private void GotoPreset(int preset)
+        private void ExecutePattern(Session session, int pattern)
         {
-            SendGotoPreset(preset);
+            //SendGotoPattern(session.selectedCamera, pattern);
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                ptzData.pattern = pattern;
+                ptzData.newPatternCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
         }
 
-        private void FocusNear(string param)
+        private void GotoPreset(Session session, int preset)
         {
-            if (param == "~")
-                _currentPTZInfo.focus = 0;
-            else
-                _currentPTZInfo.focus = -1;
-            SendFocusCommand();
+            //SendGotoPreset(session.selectedCamera, preset);
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                ptzData.preset = preset;
+                ptzData.newPresetCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
         }
 
-        private void FocusFar(string param)
+        private void FocusNear(Session session, string param)
         {
-            if (param == "~")
-                _currentPTZInfo.focus = 0;
-            else
-                _currentPTZInfo.focus = 1;
-            SendFocusCommand();
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                if (param == "~")
+                    ptzData.focus = 0;
+                else
+                    ptzData.focus = -1;
+                ptzData.newFocusCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
         }
 
-        private void IrisOpen(string param)
+        private void FocusFar(Session session, string param)
         {
-            if (param == "~")
-                _currentPTZInfo.iris = 0;
-            else
-                _currentPTZInfo.iris = 1;
-            SendIrisCommand();
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                if (param == "~")
+                    ptzData.focus = 0;
+                else
+                    ptzData.focus = 1;
+                ptzData.newFocusCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
         }
 
-        private void IrisClose(string param)
+        private void IrisOpen(Session session, string param)
         {
-            if (param == "~")
-                _currentPTZInfo.iris = 0;
-            else
-                _currentPTZInfo.iris = -1;
-            SendIrisCommand();
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                if (param == "~")
+                    ptzData.iris = 0;
+                else
+                    ptzData.iris = 1;
+                ptzData.newIrisCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
+        }
+
+        private void IrisClose(Session session, string param)
+        {
+            lock(session.ptzLock)
+            {
+                PTZInfo ptzData = new PTZInfo();
+                ptzData.camera = session.selectedCamera;
+                if (param == "~")
+                    ptzData.iris = 0;
+                else
+                    ptzData.iris = -1;
+                ptzData.newIrisCommand = true;
+
+                UpdatePTZSession(session, ptzData);
+            }
         }
 
         private void TriggerAlarm(int alarmNumber)
@@ -1743,67 +2462,70 @@ namespace ASCIIEvents
             }
             if (alarm != null)
             {
-                vxSituation enableSit = null;
-                try
+                lock (_vxSystemLock)
                 {
-                    List<vxSituation> sitList = alarm.Situations.ToList();
-                    enableSit = sitList.Find(x => x.AlarmState == 1);
-                }
-                catch
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "x.AlarmState field missing from situations in xml");
-                }
-                if (enableSit != null)
-                {
-                    CPPCli.Situation vxSit = null;
+                    vxSituation enableSit = null;
                     try
                     {
-                        //trigger alarm found in our alarm config xml
-                        //now check if it's enableSit is in our known Vx situations
-                        lock(_situationLock)
-                        {
-                            vxSit = _situations.Find(x => x.Type == enableSit.Type);
-                        }
+                        List<vxSituation> sitList = alarm.Situations.ToList();
+                        enableSit = sitList.Find(x => x.AlarmState == 1);
                     }
                     catch
                     {
-                        Trace.WriteLineIf(_debugLevel > 0, "x.SituationType field missing from Vx sitlist");
+                        Trace.WriteLineIf(_debugLevel > 0, "x.AlarmState field missing from situations in xml");
                     }
-                    // if Vx knows the situation type, inject the event
-                    if (vxSit != null)
+                    if (enableSit != null)
                     {
-                        //found our enable sit in the Vx Situations.
-                        Trace.WriteLineIf(_debugLevel > 0, "Found alarm sit type in Vx sitlist, " + vxSit.Type);
-                        CPPCli.NewEvent newEvent = new CPPCli.NewEvent();
-                        newEvent.GeneratorDeviceId = _settings.IntegrationId;   // unique identifier for this integration
-                        if (string.IsNullOrEmpty(alarm.SourceDeviceId) || alarm.SourceDeviceId == "USE_INTEGRATION_ID")
-                            newEvent.SourceDeviceId = _settings.IntegrationId;
-                        else
-                            newEvent.SourceDeviceId = alarm.SourceDeviceId;
-                        newEvent.SituationType = vxSit.Type;
-                        newEvent.Time = DateTime.UtcNow;
-
-                        List<KeyValuePair<string, string>> properties = new List<KeyValuePair<string, string>>();
-                        foreach (SituationProperty prop in enableSit.properties)
+                        CPPCli.Situation vxSit = null;
+                        try
                         {
-                            KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(prop.Key, prop.Value);
-                            properties.Add(kvp);
+                            //trigger alarm found in our alarm config xml
+                            //now check if it's enableSit is in our known Vx situations
+                            vxSit = _situations.Find(x => x.Type == enableSit.Type);
+                        }
+                        catch
+                        {
+                            Trace.WriteLineIf(_debugLevel > 0, "x.SituationType field missing from Vx sitlist");
+                        }
+                        // if Vx knows the situation type, inject the event
+                        if (vxSit != null)
+                        {
+                            //found our enable sit in the Vx Situations.
+                            Trace.WriteLineIf(_debugLevel > 0, "Found alarm sit type in Vx sitlist, " + vxSit.Type);
+                            CPPCli.NewEvent newEvent = new CPPCli.NewEvent();
+                            newEvent.GeneratorDeviceId = _settings.IntegrationId;   // unique identifier for this integration
+                            if (string.IsNullOrEmpty(alarm.SourceDeviceId) || alarm.SourceDeviceId == "USE_INTEGRATION_ID")
+                                newEvent.SourceDeviceId = _settings.IntegrationId;
+                            else
+                                newEvent.SourceDeviceId = alarm.SourceDeviceId;
+                            newEvent.SituationType = vxSit.Type;
+                            newEvent.Time = DateTime.UtcNow;
+
+                            List<KeyValuePair<string, string>> properties = new List<KeyValuePair<string, string>>();
+                            foreach (SituationProperty prop in enableSit.Properties)
+                            {
+                                KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(prop.Key, prop.Value);
+                                properties.Add(kvp);
+                            }
+
+                            if (properties.Count > 0)
+                                newEvent.Properties = properties;
+
+                            ForwardEventToVx(newEvent);
+                        }
+                        else
+                        {
+                            // situation not found.
+                            Trace.WriteLineIf(_debugLevel > 0, "\nEnable Sit type, " + enableSit.Type + ", not found in Vx sitlist");
                         }
 
-                        if (properties.Count > 0)
-                            newEvent.Properties = properties;
-
-                        ForwardEventToVx(newEvent);
+                        // now execute any scripts associated with setting the alarm situation
+                        ExecuteScripts(enableSit);
                     }
                     else
                     {
-                        // situation not found.
-                        Trace.WriteLineIf(_debugLevel > 0, "\nEnable Sit type, " + enableSit.Type + ", not found in Vx sitlist");
+                        Trace.WriteLineIf(_debugLevel > 0, "Alarm enable situation not found in config xml for Alarm " + alarmNumber);
                     }
-                }
-                else
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "Alarm enable situation not found in config xml for Alarm " + alarmNumber);
                 }
             }
             else
@@ -1826,67 +2548,70 @@ namespace ASCIIEvents
             }
             if (alarm != null)
             {
-                vxSituation clearSit = null;
-                try
+                lock (_vxSystemLock)
                 {
-                    List<vxSituation> sitList = alarm.Situations.ToList();
-                    clearSit = sitList.Find(x => x.AlarmState == 0);
-                }
-                catch
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "x.AlarmState field missing from situations in xml");
-                }
-                if (clearSit != null)
-                {
-                    CPPCli.Situation vxSit = null;
+                    vxSituation clearSit = null;
                     try
                     {
-                        //clear alarm found in our alarm config xml
-                        //now check if it's clearSit is in our known Vx situations
-                        lock(_situationLock)
-                        {
-                            vxSit = _situations.Find(x => x.Type == clearSit.Type);
-                        }
+                        List<vxSituation> sitList = alarm.Situations.ToList();
+                        clearSit = sitList.Find(x => x.AlarmState == 0);
                     }
                     catch
                     {
-                        Trace.WriteLineIf(_debugLevel > 0, "x.SituationType field missing from Vx sitlist");
+                        Trace.WriteLineIf(_debugLevel > 0, "x.AlarmState field missing from situations in xml");
                     }
-                    // if Vx knows the situation type, inject the event
-                    if (vxSit != null)
+                    if (clearSit != null)
                     {
-                        //found our enable sit in the Vx Situations.
-                        Trace.WriteLineIf(_debugLevel > 0, "Found alarm clear sit type in Vx sitlist, " + vxSit.Type);
-                        CPPCli.NewEvent newEvent = new CPPCli.NewEvent();
-                        newEvent.GeneratorDeviceId = _settings.IntegrationId;   // unique identifier for this integration
-                        if (string.IsNullOrEmpty(alarm.SourceDeviceId) || alarm.SourceDeviceId == "USE_INTEGRATION_ID")
-                            newEvent.SourceDeviceId = _settings.IntegrationId;
-                        else
-                            newEvent.SourceDeviceId = alarm.SourceDeviceId;
-                        newEvent.SituationType = vxSit.Type;
-                        newEvent.Time = DateTime.UtcNow;
-
-                        List<KeyValuePair<string, string>> properties = new List<KeyValuePair<string, string>>();
-                        foreach (SituationProperty prop in clearSit.properties)
+                        CPPCli.Situation vxSit = null;
+                        try
                         {
-                            KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(prop.Key, prop.Value);
-                            properties.Add(kvp);
+                            //clear alarm found in our alarm config xml
+                            //now check if it's clearSit is in our known Vx situations
+                            vxSit = _situations.Find(x => x.Type == clearSit.Type);
+                        }
+                        catch
+                        {
+                            Trace.WriteLineIf(_debugLevel > 0, "x.SituationType field missing from Vx sitlist");
+                        }
+                        // if Vx knows the situation type, inject the event
+                        if (vxSit != null)
+                        {
+                            //found our enable sit in the Vx Situations.
+                            Trace.WriteLineIf(_debugLevel > 0, "Found alarm clear sit type in Vx sitlist, " + vxSit.Type);
+                            CPPCli.NewEvent newEvent = new CPPCli.NewEvent();
+                            newEvent.GeneratorDeviceId = _settings.IntegrationId;   // unique identifier for this integration
+                            if (string.IsNullOrEmpty(alarm.SourceDeviceId) || alarm.SourceDeviceId == "USE_INTEGRATION_ID")
+                                newEvent.SourceDeviceId = _settings.IntegrationId;
+                            else
+                                newEvent.SourceDeviceId = alarm.SourceDeviceId;
+                            newEvent.SituationType = vxSit.Type;
+                            newEvent.Time = DateTime.UtcNow;
+
+                            List<KeyValuePair<string, string>> properties = new List<KeyValuePair<string, string>>();
+                            foreach (SituationProperty prop in clearSit.Properties)
+                            {
+                                KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(prop.Key, prop.Value);
+                                properties.Add(kvp);
+                            }
+
+                            if (properties.Count > 0)
+                                newEvent.Properties = properties;
+
+                            ForwardEventToVx(newEvent);
+                        }
+                        else
+                        {
+                            //Situation not found
+                            Trace.WriteLineIf(_debugLevel > 0, "\nClear Sit type, " + clearSit.Type + ", not found in Vx sitlist");
                         }
 
-                        if (properties.Count > 0)
-                            newEvent.Properties = properties;
-
-                        ForwardEventToVx(newEvent);
+                        // now execute any scripts associated with clearing the alarm situation
+                        ExecuteScripts(clearSit);
                     }
                     else
                     {
-                        //Situation not found
-                        Trace.WriteLineIf(_debugLevel > 0, "\nClear Sit type, " + clearSit.Type + ", not found in Vx sitlist");
+                        Trace.WriteLineIf(_debugLevel > 0, "Alarm clear situation not found in config xml for Alarm " + alarmNumber);
                     }
-                }
-                else
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "Alarm clear situation not found in config xml for Alarm " + alarmNumber);
                 }
             }
             else
@@ -1903,16 +2628,6 @@ namespace ASCIIEvents
             Trace.WriteLineIf(_debugLevel > 0, "At " + DateTime.Now.ToString() + " Command Delay until " + _commandDelayUntilTime.ToString());
         }
 
-        private void AuxOn(int preset)
-        {
-            // not supported in Vx yet (as of 1.12)
-        }
-
-        private void AuxOff(int preset)
-        {
-            // not supported in Vx yet (as of 1.12)
-        }
-
         #endregion
 
         private bool CameraWithinBounds(int cameraNumber)
@@ -1927,108 +2642,150 @@ namespace ASCIIEvents
             return false;
         }
 
-        private void GoToLive(int cameraNumber, int monitorNumber, int cellNumber)
+        private void GoToLive(int cameraNumber, int monitorNumber, int cell)
         {
             // can't set DateTime to null, so set it equal to DateTime.MinValue
-            Seek(cameraNumber, monitorNumber, cellNumber, new DateTime());
+            Seek(cameraNumber, monitorNumber, cell, new DateTime());
         }
 
-        private void Disconnect(int cameraNumber, int monitorNumber, int cellNumber)
+        private void Disconnect(int monitorNumber, int cellNumber)
         {
-            CPPCli.DataSource camera = GetCamera(cameraNumber);
-            CPPCli.Monitor monitor = GetMonitor(monitorNumber);
-            if (camera != null && monitor != null)
+            lock (_vxSystemLock)
             {
-                if (monitor.MonitorCells.Count > cellNumber)
+                int cell = cellNumber;
+                // possibly overwrites cell if MonitorToCellMap in use
+                CPPCli.Monitor monitor = GetMonitor(monitorNumber, ref cell);
+                if (monitor != null)
                 {
-                    CPPCli.MonitorCell cell = monitor.MonitorCells[cellNumber];
-                    cell.Disconnect();
+                    if (monitor.MonitorCells.Count > cell)
+                    {
+                        CPPCli.MonitorCell monCell = monitor.MonitorCells[cell];
+                        monCell.Disconnect();
+                    }
                 }
             }
         }
 
         private void Seek(int cameraNumber, int monitorNumber, int cellNumber, DateTime time)
         {
-            CPPCli.DataSource camera = GetCamera(cameraNumber);
-            CPPCli.Monitor monitor = GetMonitor(monitorNumber);
-            if (camera != null && monitor != null)
+            lock (_vxSystemLock)
             {
-                if (monitor.MonitorCells.Count > cellNumber)
+                CPPCli.DataSource camera = GetCamera(cameraNumber);
+                int cell = cellNumber;
+                // possibly overwrites cell if MonitorToCellMap in use
+                CPPCli.Monitor monitor = GetMonitor(monitorNumber, ref cell);
+                if (camera != null && monitor != null)
                 {
-                    CPPCli.MonitorCell cell = monitor.MonitorCells[cellNumber];
-                    // DateTime.MinValue used to signal going to live
-                    if (time == DateTime.MinValue)
+                    if (monitor.MonitorCells.Count > cell)
                     {
-                        cell.GoToLive();
-                        Trace.WriteLineIf(_debugLevel > 0, "Camera " + cameraNumber + " LIVE");
+                        CPPCli.MonitorCell monCell = monitor.MonitorCells[cell];
+                        // DateTime.MinValue used to signal going to live
+                        if (time == DateTime.MinValue)
+                        {
+                            monCell.GoToLive();
+                            Trace.WriteLineIf(_debugLevel > 0, "Camera " + cameraNumber + " LIVE");
+                        }
+                        else
+                        {
+                            DateTime temptime = monCell.Time;
+                            monCell.Time = time;
+                            Trace.WriteLineIf(_debugLevel > 0, "Camera " + cameraNumber + " SEEK TO " + time.ToString());
+                            Trace.WriteLineIf(_debugLevel > 0, "   Previous time: " + temptime.ToString());
+                        }
                     }
                     else
                     {
-                        DateTime temptime = cell.Time;
-                        cell.Time = time;
-                        Trace.WriteLineIf(_debugLevel > 0, "Camera " + cameraNumber + " SEEK TO " + time.ToString());
-                        Trace.WriteLineIf(_debugLevel > 0, "   Previous time: " + temptime.ToString());
+                        Trace.WriteLineIf(_debugLevel > 0, "Unable to Seek Camera " + cameraNumber + " to " + time.ToString());
                     }
                 }
                 else
                 {
-                    Trace.WriteLineIf(_debugLevel > 0, "Unable to Seek Camera " + cameraNumber + " to " + time.ToString());
+                    Trace.WriteLineIf(_debugLevel > 0, "Unable to Seek Camera " + cameraNumber + " on Monitor " + monitorNumber);
                 }
-            }
-            else
-            {
-                Trace.WriteLineIf(_debugLevel > 0, "Unable to Seek Camera " + cameraNumber + " on Monitor " + monitorNumber);
             }
         }
 
         private void ChangePlaySpeed(int cameraNumber, int monitorNumber, int cellNumber, int speed)
         {
-            CPPCli.DataSource camera = GetCamera(cameraNumber);
-            CPPCli.Monitor monitor = GetMonitor(monitorNumber);
-            if (camera != null && monitor != null)
+            lock (_vxSystemLock)
             {
-                if (monitor.MonitorCells.Count > cellNumber)
+                CPPCli.DataSource camera = GetCamera(cameraNumber);
+                int cell = cellNumber;
+                // possibly overwrites cell if MonitorToCellMap in use
+                CPPCli.Monitor monitor = GetMonitor(monitorNumber, ref cell);
+                if (camera != null && monitor != null)
                 {
-                    CPPCli.MonitorCell cell = monitor.MonitorCells[cellNumber];
-                    cell.Speed = speed;
+                    if (monitor.MonitorCells.Count > cell)
+                    {
+                        CPPCli.MonitorCell monCell = monitor.MonitorCells[cell];
+                        monCell.Speed = speed;
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "Unable to change Camera " + cameraNumber + " speed to " + speed);
+                    }
                 }
                 else
                 {
-                    Trace.WriteLineIf(_debugLevel > 0, "Unable to change Camera " + cameraNumber + " speed to " + speed);
+                    Trace.WriteLineIf(_debugLevel > 0, "Unable to change Camera " + cameraNumber + " speed to " + speed + " on monitor " + monitorNumber);
                 }
-            }
-            else
-            {
-                Trace.WriteLineIf(_debugLevel > 0, "Unable to change Camera " + cameraNumber + " speed to " + speed + " on monitor " + monitorNumber);
             }
         }
 
-        private void DisplayCameraOnMonitor(int cameraNumber, int monitorNumber, int cellNumber = 0)
+        private void DisplayCameraOnMonitor(int cameraNumber, int monitorNumber, int cellNumber = 0, int previousSeconds = 0)
         {
-            CPPCli.DataSource camera = GetCamera(cameraNumber);
-            CPPCli.Monitor monitor = GetMonitor(monitorNumber);
-            if (camera != null && monitor != null)
+            // 6/21/2017 Camera number 0 not disconnects camera on selected monitor
+            if (cameraNumber == 0)
             {
-                if (monitor.MonitorCells.Count > cellNumber)
+                Disconnect(monitorNumber, cellNumber);
+                return;
+            }
+            lock (_vxSystemLock)
+            {
+                int cell = cellNumber;
+                CPPCli.DataSource camera = GetCamera(cameraNumber);
+                // possibly overwrites cell if MonitorToCellMap in use
+                CPPCli.Monitor monitor = GetMonitor(monitorNumber, ref cell);
+                Trace.WriteLineIf(_debugLevel > 0, "Display Camera " + cameraNumber + " on Monitor " + monitorNumber + " in cell " + (cell + 1));
+
+                if (camera != null && monitor != null)
                 {
-                    CPPCli.MonitorCell cell = monitor.MonitorCells[cellNumber];
-                    cell.DataSourceId = camera.Id;
+                    if (monitor.MonitorCells.Count > cell)
+                    {
+                        CPPCli.MonitorCell monCell = monitor.MonitorCells[cell];
+                        if (monCell.DataSourceId != camera.Id)
+                            monCell.DataSourceId = camera.Id;
+                        if (previousSeconds != 0)
+                        {
+                            DateTime utcTime = DateTime.UtcNow;
+                            TimeSpan span = new TimeSpan(0, 0, previousSeconds);
+                            Trace.WriteIf(_debugLevel > 0, "   UTC Time: " + utcTime.ToString());
+                            utcTime = utcTime - span;
+                            Trace.WriteLineIf(_debugLevel > 0, ", Setting time to " + utcTime.ToString());
+                            monCell.Time = utcTime;
+                            //utcTime = utcTime - span;
+                            //Trace.WriteLineIf(_debugLevel > 0, ", Setting time to " + utcTime.ToString());
+                            //monCell.Time = utcTime;
+                            Trace.WriteLineIf(_debugLevel > 0, ", Setting time Complete");
+                        }
+                        else monCell.GoToLive();
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "Unable to display Camera " + cameraNumber + " on Monitor " + monitorNumber + " in cell " + cell);
+                    }
                 }
                 else
                 {
-                    Trace.WriteLineIf(_debugLevel > 0, "Unable to display Camera " + cameraNumber + " on Monitor " + monitorNumber + " in cell " + cellNumber);
+                    Trace.WriteLineIf(_debugLevel > 0, "Unable to display Camera " + cameraNumber + " on Monitor " + monitorNumber);
                 }
-            }
-            else
-            {
-                Trace.WriteLineIf(_debugLevel > 0, "Unable to display Camera " + cameraNumber + " on Monitor " + monitorNumber);
             }
         }
 
         private CPPCli.DataSource GetCamera(int cameraNumber)
         {
             CPPCli.DataSource datasource = null;
-            lock(_datasourceLock)
+            lock (_vxSystemLock)
             {
                 if (_datasources != null)
                 {
@@ -2048,7 +2805,7 @@ namespace ASCIIEvents
         private CPPCli.DataSource GetCamera(string id)
         {
             CPPCli.DataSource datasource = null;
-            lock(_datasourceLock)
+            lock (_vxSystemLock)
             {
                 if (_datasources != null)
                 {
@@ -2068,7 +2825,7 @@ namespace ASCIIEvents
         private string GetCameraUUID(int cameraNumber)
         {
             string uuid = string.Empty;
-            lock (_datasourceLock)
+            lock (_vxSystemLock)
             {
                 if (_datasources != null)
                 {
@@ -2087,15 +2844,31 @@ namespace ASCIIEvents
             return uuid;
         }
 
-        private CPPCli.Monitor GetMonitor(int monitorNumber)
+        private CPPCli.Monitor GetMonitor(int monitorNumber, ref int cell)
         {
             CPPCli.Monitor monitor = null;
-            lock(_monitorLock)
+            lock (_vxSystemLock)
             {
                 if (_monitors != null)
                 {
                     try
                     {
+                        // if we have mapped ASCII monitors to cells, do the mapping
+                        if (_monitorToCellMapList != null)
+                        {
+                            // if a mapping exists
+                            if (_monitorToCellMapList.Exists(x => x.ASCIIMonitor == monitorNumber))
+                            {
+                                MonitorToCell mtoc = _monitorToCellMapList.Find(x => x.ASCIIMonitor == monitorNumber);
+                                if (mtoc != null)
+                                {
+                                    monitorNumber = mtoc.VxMonitor;
+                                    if (mtoc.VxCell > 0)
+                                        cell = mtoc.VxCell - 1;
+                                }
+                            }
+                        }
+
                         monitor = _monitors.Find(x => x.Number == monitorNumber);
                     }
                     catch
@@ -2110,7 +2883,7 @@ namespace ASCIIEvents
         private string GetMonitorUUID(int monitorNumber)
         {
             string uuid = string.Empty;
-            lock(_monitorLock)
+            lock (_vxSystemLock)
             {
                 if (_monitors != null)
                 {
@@ -2132,25 +2905,31 @@ namespace ASCIIEvents
         private int GetCameraInCell(int monitorNumber, int cellNumber)
         {
             int cameraNumber = 0;
-            CPPCli.Monitor monitor = GetMonitor(monitorNumber);
-            if (monitor != null)
+            lock (_vxSystemLock)
             {
-                if (monitor.MonitorCells.Count > cellNumber)
+                int cell = cellNumber;
+                // possibly overwrites cell if MonitorToCellMap in use
+                CPPCli.Monitor monitor = GetMonitor(monitorNumber, ref cell);
+                if (monitor != null)
                 {
-                    CPPCli.MonitorCell cell = monitor.MonitorCells[cellNumber];
-                    CPPCli.DataSource dataSource = GetCamera(cell.DataSourceId);
-                    if (dataSource != null)
-                        cameraNumber = dataSource.Number;
+                    if (monitor.MonitorCells.Count > cell)
+                    {
+                        CPPCli.MonitorCell monCell = monitor.MonitorCells[cell];
+                        CPPCli.DataSource dataSource = GetCamera(monCell.DataSourceId);
+                        if (dataSource != null)
+                            cameraNumber = dataSource.Number;
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "GetCameraInCell has fewer cells than " + cell);
+                    }
                 }
                 else
                 {
-                    Trace.WriteLineIf(_debugLevel > 0, "GetCameraInCell has fewer cells than " + cellNumber);
+                    Trace.WriteLineIf(_debugLevel > 0, "GetCameraInCell cannot find monitor " + monitorNumber);
                 }
             }
-            else
-            {
-                Trace.WriteLineIf(_debugLevel > 0, "GetCameraInCell cannot find monitor " + monitorNumber);
-            }
+
             return cameraNumber;
         }
         #region PTZ Methods
@@ -2158,15 +2937,17 @@ namespace ASCIIEvents
         private CPPCli.PtzController GetPTZController(int cameraNumber)
         {
             CPPCli.PtzController ptzController = null;
-
-            try
+            lock (_vxSystemLock)
             {
-                CPPCli.DataSource camera = GetCamera(cameraNumber);
-                ptzController = camera.PTZController;
-            }
-            catch
-            {
-                Trace.WriteLineIf(_debugLevel > 0, "Unable to get PTZController for " + cameraNumber);
+                try
+                {
+                    CPPCli.DataSource camera = GetCamera(cameraNumber);
+                    ptzController = camera.PTZController;
+                }
+                catch
+                {
+                    Trace.WriteLineIf(_debugLevel > 0, "Unable to get PTZController for " + cameraNumber);
+                }
             }
             return ptzController;
         }
@@ -2175,20 +2956,24 @@ namespace ASCIIEvents
         {
             try
             {
-                CPPCli.PtzController ptzController = GetPTZController(_selectedCamera);
-                if (ptzController != null)
+                lock (_vxSystemLock)
                 {
-                    CPPCli.PtzController.ZoomDirections inOut;
-                    if (ptz.zoom < 0)
-                        inOut = CPPCli.PtzController.ZoomDirections.Out;
-                    else if (ptz.zoom > 0)
-                        inOut = CPPCli.PtzController.ZoomDirections.In;
-                    else inOut = CPPCli.PtzController.ZoomDirections.Stop;
-                    ptzController.ContinuousMove(ptz.pan, ptz.tilt, inOut);
-                }
-                else
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to PTZ");
+                    CPPCli.PtzController ptzController = GetPTZController(ptz.camera);
+                    if (ptzController != null)
+                    {
+                        Trace.WriteLineIf(_debugLevel > 1, "Cam " + ptz.camera + " PTZ pan: " + ptz.pan + " tilt: " + ptz.tilt + " zoom: " + ptz.zoom);
+                        CPPCli.PtzController.ZoomDirections inOut;
+                        if (ptz.zoom < 0)
+                            inOut = CPPCli.PtzController.ZoomDirections.Out;
+                        else if (ptz.zoom > 0)
+                            inOut = CPPCli.PtzController.ZoomDirections.In;
+                        else inOut = CPPCli.PtzController.ZoomDirections.Stop;
+                        ptzController.ContinuousMove(ptz.pan, ptz.tilt, inOut);
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to PTZ");
+                    }
                 }
             }
             catch
@@ -2197,24 +2982,28 @@ namespace ASCIIEvents
             }
         }
 
-        private void SendIrisCommand()
+        private void SendIrisCommand(PTZInfo ptz)
         {
             try
             {
-                CPPCli.PtzController ptzController = GetPTZController(_selectedCamera);
-                if (ptzController != null)
+                lock (_vxSystemLock)
                 {
-                    CPPCli.PtzController.IrisDirections inOut;
-                    if (_currentPTZInfo.iris < 0)
-                        inOut = CPPCli.PtzController.IrisDirections.Close;
-                    else if (_currentPTZInfo.iris > 0)
-                        inOut = CPPCli.PtzController.IrisDirections.Open;
-                    else inOut = CPPCli.PtzController.IrisDirections.Stop;
-                    ptzController.ContinuousIris(inOut);
-                }
-                else
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to move Iris");
+                    CPPCli.PtzController ptzController = GetPTZController(ptz.camera);
+                    if (ptzController != null)
+                    {
+                        Trace.WriteLineIf(_debugLevel > 1, "Cam " + ptz.camera + " iris: " + ptz.iris);
+                        CPPCli.PtzController.IrisDirections inOut;
+                        if (ptz.iris < 0)
+                            inOut = CPPCli.PtzController.IrisDirections.Close;
+                        else if (ptz.iris > 0)
+                            inOut = CPPCli.PtzController.IrisDirections.Open;
+                        else inOut = CPPCli.PtzController.IrisDirections.Stop;
+                        ptzController.ContinuousIris(inOut);
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to move Iris");
+                    }
                 }
             }
             catch
@@ -2223,24 +3012,28 @@ namespace ASCIIEvents
             }
         }
 
-        private void SendFocusCommand()
+        private void SendFocusCommand(PTZInfo ptz)
         {
             try
             {
-                CPPCli.PtzController ptzController = GetPTZController(_selectedCamera);
-                if (ptzController != null)
+                lock (_vxSystemLock)
                 {
-                    CPPCli.PtzController.FocusDirections inOut;
-                    if (_currentPTZInfo.focus < 0)
-                        inOut = CPPCli.PtzController.FocusDirections.Near;
-                    else if (_currentPTZInfo.focus > 0)
-                        inOut = CPPCli.PtzController.FocusDirections.Far;
-                    else inOut = CPPCli.PtzController.FocusDirections.Stop;
-                    ptzController.ContinuousFocus(inOut);
-                }
-                else
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to move Focus");
+                    CPPCli.PtzController ptzController = GetPTZController(ptz.camera);
+                    if (ptzController != null)
+                    {
+                        Trace.WriteLineIf(_debugLevel > 1, "Cam " + ptz.camera + " focus: " + ptz.focus);
+                        CPPCli.PtzController.FocusDirections inOut;
+                        if (ptz.focus < 0)
+                            inOut = CPPCli.PtzController.FocusDirections.Near;
+                        else if (ptz.focus > 0)
+                            inOut = CPPCli.PtzController.FocusDirections.Far;
+                        else inOut = CPPCli.PtzController.FocusDirections.Stop;
+                        ptzController.ContinuousFocus(inOut);
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to move Focus");
+                    }
                 }
             }
             catch
@@ -2249,18 +3042,22 @@ namespace ASCIIEvents
             }
         }
 
-        private void SendPTZStop()
+        private void SendPTZStop(PTZInfo ptz)
         {
             try
             {
-                CPPCli.PtzController ptzController = GetPTZController(_selectedCamera);
-                if (ptzController != null)
+                lock (_vxSystemLock)
                 {
-                    ptzController.Stop();
-                }
-                else
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to Stop PTZ");
+                    CPPCli.PtzController ptzController = GetPTZController(ptz.camera);
+                    if (ptzController != null)
+                    {
+                        Trace.WriteLineIf(_debugLevel > 1, "Cam " + ptz.camera + " PTZ STOP");
+                        ptzController.Stop();
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to Stop PTZ");
+                    }
                 }
             }
             catch
@@ -2276,22 +3073,27 @@ namespace ASCIIEvents
             return vxSpeed;
         }
 
-        private void SendGotoPreset(int presetNumber)
+        private void SendGotoPreset(int camera, int presetNumber)
         {
             try
             {
-                CPPCli.PtzController ptzController = GetPTZController(_selectedCamera);
-                if (ptzController != null)
+                lock (_vxSystemLock)
                 {
-                    List<CPPCli.Preset> presets = ptzController.GetPresets();
-                    string presetString = "PRESET" + presetNumber.ToString();
-                    CPPCli.Preset preset = presets.Find(x => x.Name == presetString);
-                    if (preset != null)
-                        ptzController.TriggerPreset(preset);
-                }
-                else
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to call Preset " + presetNumber);
+                    CPPCli.PtzController ptzController = GetPTZController(camera);
+                    if (ptzController != null)
+                    {
+                        Trace.WriteLineIf(_debugLevel > 1, "Cam " + camera + " Call Preset: " + presetNumber);
+                        List<CPPCli.Preset> presets = ptzController.GetPresets();
+                        string presetString = "PRESET" + presetNumber.ToString();
+                        CPPCli.Preset preset = presets.Find(x => x.Name.ToUpper() == presetString.ToUpper());
+                        if (preset != null)
+                            ptzController.TriggerPreset(preset);
+                        else Trace.WriteLineIf(_debugLevel > 1, "Preset " + presetNumber + " NOT FOUND");
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to call Preset " + presetNumber);
+                    }
                 }
             }
             catch
@@ -2300,22 +3102,27 @@ namespace ASCIIEvents
             }
         }
 
-        private void SendGotoPattern(int patternNumber)
+        private void SendGotoPattern(int camera, int patternNumber)
         {
             try
             {
-                CPPCli.PtzController ptzController = GetPTZController(_selectedCamera);
-                if (ptzController != null)
+                lock (_vxSystemLock)
                 {
-                    List<CPPCli.Pattern> patterns = ptzController.GetPatterns();
-                    string patternString = "PATTERN" + patternNumber.ToString();
-                    CPPCli.Pattern pattern = patterns.Find(x => x.Name == patternString);
-                    if (pattern != null)
-                        ptzController.TriggerPattern(pattern);
-                }
-                else
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to call Pattern " + patternNumber);
+                    CPPCli.PtzController ptzController = GetPTZController(camera);
+                    if (ptzController != null)
+                    {
+                        Trace.WriteLineIf(_debugLevel > 1, "Cam " + camera + " Call Pattern: " + patternNumber);
+                        List<CPPCli.Pattern> patterns = ptzController.GetPatterns();
+                        string patternString = "PATTERN" + patternNumber.ToString();
+                        CPPCli.Pattern pattern = patterns.Find(x => x.Name == patternString);
+                        if (pattern != null)
+                            ptzController.TriggerPattern(pattern);
+                        else Trace.WriteLineIf(_debugLevel > 1, "Pattern " + patternNumber + " NOT FOUND");
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to call Pattern " + patternNumber);
+                    }
                 }
             }
             catch
@@ -2333,17 +3140,17 @@ namespace ASCIIEvents
             vxSystem = new CPPCli.VXSystem(ipAddress, port, useSSL);
 
             //var result = vxSystem.InitializeSdk(SdkKey);
-            var result = CPPCli.VxGlobal.InitializeSdk(SdkKey);
+            //var result = CPPCli.VxGlobal.InitializeSdk(SdkKey);
             
-            if (result != CPPCli.Results.Value.OK)
-            {
-                Trace.WriteLineIf(_debugLevel > 0, "Unable to connect to VideoXpert: SDK Key failed to initialize");
-                status = false;
-                vxSystem = null;
-                return status;
-            }
+            //if (result != CPPCli.Results.Value.OK)
+            //{
+            //    Trace.WriteLineIf(_debugLevel > 0, "Unable to connect to VideoXpert: SDK Key failed to initialize");
+            //    status = false;
+            //    vxSystem = null;
+            //    return status;
+            //}
 
-            result = vxSystem.Login(userName, password);
+            var result = vxSystem.Login(userName, password);
             if (result == CPPCli.Results.Value.OK)
             {
                 Trace.WriteLineIf(_debugLevel > 0, "Logged into VideoXpert at " + ipAddress);
@@ -2352,6 +3159,8 @@ namespace ASCIIEvents
             else
             {
                 Trace.WriteLineIf(_debugLevel > 0, "Unable to log user " + userName + " into VideoXpert at " + ipAddress);
+                Trace.WriteLineIf(_debugLevel > 2, "   Password " + password);
+                Trace.WriteLineIf(_debugLevel > 2, "   result " + result);
                 status = false;
                 vxSystem = null;
             }
@@ -2363,38 +3172,44 @@ namespace ASCIIEvents
         {
             bool retVal = false;
             CPPCli.Situation situation = null;
-            try
+            lock (_vxSystemLock)
             {
-                lock(_situationLock)
+                try
                 {
                     situation = _situations.Find(x => x.Type == newEvent.SituationType);
                 }
-            }
-            catch
-            {
-                Trace.WriteLineIf((_debugLevel > 0), "Situation " + newEvent.SituationType + " not found.");
-            };
-
-            if (situation != null)
-            {
-                Trace.WriteLineIf((_debugLevel > 0), "\nASCII Event match found: injecting Vx Event");
-                Trace.WriteLineIf((_debugLevel > 0), "   GeneratorDeviceId: " + newEvent.GeneratorDeviceId);
-                Trace.WriteLineIf((_debugLevel > 0), "   SourceDeviceId   : " + newEvent.SourceDeviceId);
-                Trace.WriteLineIf((_debugLevel > 0), "   Situation        : " + newEvent.SituationType);
-                if (_debugLevel > 0)
+                catch
                 {
-                    foreach (var prop in newEvent.Properties)
+                    Trace.WriteLineIf((_debugLevel > 0), "Situation " + newEvent.SituationType + " not found.");
+                };
+
+                if (situation != null)
+                {
+                    Trace.WriteLineIf((_debugLevel > 0), "\nASCII Event match found: injecting Vx Event");
+                    Trace.WriteLineIf((_debugLevel > 0), "   GeneratorDeviceId: " + newEvent.GeneratorDeviceId);
+                    Trace.WriteLineIf((_debugLevel > 0), "   SourceDeviceId   : " + newEvent.SourceDeviceId);
+                    Trace.WriteLineIf((_debugLevel > 0), "   Situation        : " + newEvent.SituationType);
+                    if (_debugLevel > 0)
                     {
-                        Trace.WriteLine("   Property         : " + prop.Key + " , " + prop.Value);
+                        foreach (var prop in newEvent.Properties)
+                        {
+                            Trace.WriteLine("   Property         : " + prop.Key + " , " + prop.Value);
+                        }
                     }
-                }
 
-                CPPCli.Results.Value result = _vxSystem.InjectEvent(newEvent);
-                if (result != CPPCli.Results.Value.OK)
-                {
-                    Trace.WriteLineIf((_debugLevel > 0), "ForwardEventToVx failed to inject event into Vx: " + result);
+                    CPPCli.Results.Value result = CPPCli.Results.Value.UnknownError;
+                    lock (_vxSystemLock)
+                    {
+                        CPPCli.VXSystem system = GetVxSystem();
+                        if (system != null)
+                            result = system.InjectEvent(newEvent);
+                    }
+                    if (result != CPPCli.Results.Value.OK)
+                    {
+                        Trace.WriteLineIf((_debugLevel > 0), "ForwardEventToVx failed to inject event into Vx: " + result);
+                    }
+                    else retVal = true;
                 }
-                else retVal = true;
             }
 
             return retVal;
@@ -2403,175 +3218,257 @@ namespace ASCIIEvents
         private bool SetLayout(int monitorNumber, CPPCli.Monitor.Layouts layout)
         {
             bool retVal = false;
-            CPPCli.Monitor monitor = GetMonitor(monitorNumber);
-            if (monitor != null)
+            lock (_vxSystemLock)
             {
-                monitor.Layout = layout;
-                retVal = true;
+                int cell = 0;
+                CPPCli.Monitor monitor = GetMonitor(monitorNumber, ref cell);
+                if (monitor != null)
+                {
+                    monitor.Layout = layout;
+                    retVal = true;
+                }
             }
             return retVal;
         }
         #endregion
 
-        #region POS ROUTINES
-        private bool AtPOSDelimiter(string command)
+        #region Script Action Handling
+        private void ExecuteScripts(vxSituation vxSit)
         {
-            bool found = false;
-            if (command.EndsWith(_settings.POSSettings.EndDelimiter))
-                found = true;
-            return found;
-        }
-
-        private bool AtLineDelimiter(string command)
-        {
-            bool found = false;
-            if (!string.IsNullOrEmpty(_settings.POSSettings.LineDelimiter))
+            if ((vxSit != null) && (vxSit.ExecuteScripts != null))
             {
-                if (command.EndsWith(_settings.POSSettings.LineDelimiter))
-                    found = true;
+                foreach (int scriptNumber in vxSit.ExecuteScripts)
+                {
+                    ExecuteScript(scriptNumber);
+                }
             }
-            return found;
         }
 
-        private bool FindPOSKeyWord(string command)
+        void ExecuteScript(int scriptNumber)
         {
-            bool found = false;
-            if (command.Contains(_settings.POSSettings.KeyWord))
-                found = true;
-            return found;
-        }
-
-        // injects Alarm 1 as POS Event, alarm 1 with AlarmState 1 must be defined
-        private void InjectPOSEvent(string command, bool receiptComplete)
-        {
-            //if (receiptComplete)
-            //    Trace.Write("Complete: ");
-            //Trace.WriteLine("InjectPOSEvent " + command);
-
-            Alarm alarm = null;
-            // Alarm 1 is used for reciept complete, 2 for line event
-            int alarmNumber = 1;
-            if (!receiptComplete)
-                alarmNumber = 2;
-
-            // bounds checked before it gets here
             try
             {
-                alarm = _alarmConfig.Find(x => x.Number == alarmNumber);
-            }
-            catch
-            {
-                Trace.WriteLineIf(_debugLevel > 0, "Required Alarm number " + alarmNumber + " is missing from AlarmConfiguration.xml");
-            }
-            if (alarm != null)
-            {
-                vxSituation posSit = null;
-                try
+                Script script = _scripts.Find(x => x.Number == scriptNumber);
+                if (script != null)
                 {
-                    List<vxSituation> sitList = alarm.Situations.ToList();
-                    posSit = sitList.Find(x => x.AlarmState == 1); // AlarmState must be 1 (0 is not used for POS events)
-                }
-                catch
-                {
-                    Trace.WriteLineIf(_debugLevel > 0, "Required Alarm number " + alarmNumber + " is missing AlarmState of 1");
-                }
-                if (posSit != null)
-                {
-                    CPPCli.Situation vxSit = null;
-                    try
+                    foreach (Action action in script.Actions)
                     {
-                        //trigger alarm found in our alarm config xml
-                        //now check if it's enableSit is in our known Vx situations
-                        lock(_situationLock)
+                        switch (action.Name.ToLower())
                         {
-                            vxSit = _situations.Find(x => x.Type == posSit.Type);
+                            case "setlayout":
+                            {
+                                int mon = Convert.ToInt32(action.Monitor);
+                                CPPCli.Monitor.Layouts layout = StringToMonitorLayout(action.Layout);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: SetLayout " + action.Layout + " On Monitor " + mon);
+                                SetLayout(mon, layout);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: SetLayout Complete");
+                                break;
+                            }
+                            case "displaycamera":
+                            {
+                                int mon = Convert.ToInt32(action.Monitor);
+                                int cell = Convert.ToInt32(action.Cell);
+                                if (cell > 0) // cell is 0 based, so subtract 1
+                                    cell--;
+                                int camera = Convert.ToInt32(action.Camera);
+                                int previousSeconds = 0;
+                                if (!string.IsNullOrEmpty(action.PreviousSeconds))
+                                    previousSeconds = Convert.ToInt32(action.PreviousSeconds);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: DisplayCamera " + camera + " On Monitor " + mon + " in Cell " + (cell + 1));
+                                DisplayCameraOnMonitor(camera, mon, cell, previousSeconds);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: DisplayCamera Complete");
+                                break;
+                            }
+                            case "disconnectcamera":
+                            {
+                                int mon = Convert.ToInt32(action.Monitor);
+                                int cell = Convert.ToInt32(action.Cell);
+                                if (cell > 0) // cell is 0 based, so subtract 1
+                                    cell--;
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: Disconnect Camera from Monitor " + mon + " in Cell " + (cell + 1));
+                                Disconnect(mon, cell);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: Disconnect Complete");
+                                break;
+                            }
+                            case "gotopreset":
+                            {
+                                int camera = Convert.ToInt32(action.Camera);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: Camera " + camera + " GotoPreset " + action.Preset);
+                                SendGotoPreset(camera, action.Preset);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: GotoPreset Complete");
+                                break;
+                            }
+                            case "runpattern":
+                            {
+                                int camera = Convert.ToInt32(action.Camera);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: Camera " + camera + " RunPattern " + action.Pattern);
+                                SendGotoPattern(camera, action.Pattern);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: RunPattern Complete");
+                                break;
+                            }
+                            case "bookmark":
+                            {
+                                int camera = Convert.ToInt32(action.Camera);
+                                string description = action.Description;
+                                if (string.IsNullOrEmpty(description))
+                                {
+                                    description = "Script " + scriptNumber + " BookMark";
+                                }
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: BookMark " + camera + " Description " + description);
+                                CreateBookmark(camera, description);
+                                Trace.WriteLineIf((_debugLevel > 0), "Script: BookMark Complete");
+                                break;
+                            }
+                            default:
+                                break;
                         }
                     }
-                    catch
-                    {
-                        Trace.WriteLineIf(_debugLevel > 0, "Required Situation type " + posSit.Type + " is missing from Situation list (check CustomSituations.xml)");
-                    }
-                    // if Vx knows the situation type, inject the event
-                    if (vxSit != null)
-                    {
-                        //found our enable sit in the Vx Situations.
-                        Trace.WriteLineIf(_debugLevel > 0, "Found POS alarm sit type in Vx sitlist, " + vxSit.Type);
-                        string sourceDeviceId;
-                        if (string.IsNullOrEmpty(alarm.SourceDeviceId) || alarm.SourceDeviceId == "USE_INTEGRATION_ID")
-                            sourceDeviceId = _settings.IntegrationId;
-                        else
-                            sourceDeviceId = alarm.SourceDeviceId;
+                }
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLine("Exception in ExecuteScript " + scriptNumber + ":" + e.Message);
+            }
+        }
 
-                        while (command.Length > 0)
+        private void SendGotoPreset(int camera, string presetStr)
+        {
+            try
+            {
+                lock (_vxSystemLock)
+                {
+                    CPPCli.PtzController ptzController = GetPTZController(camera);
+                    if (ptzController != null)
+                    {
+                        List<CPPCli.Preset> presets = ptzController.GetPresets();
+                        CPPCli.Preset preset = presets.Find(x => x.Name.ToUpper() == presetStr.ToUpper());
+                        if (preset != null)
+                            ptzController.TriggerPreset(preset);
+                        else
                         {
-                            string posData;
-                            if (command.Length > MAX_KVP_VALUE_SIZE)
+                            Trace.WriteLineIf((_debugLevel > 0), "Unable to find preset " + presetStr);
+                            Trace.WriteLineIf((_debugLevel > 0), "Available:");
+                            foreach (CPPCli.Preset prst in presets)
                             {
-                                posData = command.Substring(0, MAX_KVP_VALUE_SIZE - 1);
-                                command = command.Substring(MAX_KVP_VALUE_SIZE);
+                                Trace.WriteLineIf((_debugLevel > 0), "   " + prst.Name);
                             }
-                            else
-                            {
-                                posData = command;
-                                command = string.Empty;
-                            }
-                            InjectPOSEvent(posSit, sourceDeviceId, posData, receiptComplete);
                         }
                     }
                     else
                     {
-                        // situation not found.
-                        Trace.WriteLineIf(_debugLevel > 0, "\nEnable Sit type, " + posSit.Type + ", not found in Vx sitlist");
+                        Trace.WriteLineIf(_debugLevel > 0, "No PTZController for camera " + camera + " Unable to call Preset " + presetStr);
                     }
                 }
-                else
+            }
+            catch
+            {
+                Trace.WriteLineIf(_debugLevel > 0, "Exception, Unable to call Preset " + presetStr + " on camera " + camera);
+            }
+        }
+
+        private void SendGotoPattern(int camera, string patternStr)
+        {
+            try
+            {
+                lock (_vxSystemLock)
                 {
-                    Trace.WriteLineIf(_debugLevel > 0, "Alarm enable situation not found in config xml for POS Alarm");
+                    CPPCli.PtzController ptzController = GetPTZController(camera);
+                    if (ptzController != null)
+                    {
+                        List<CPPCli.Pattern> patterns = ptzController.GetPatterns();
+                        CPPCli.Pattern pattern = patterns.Find(x => x.Name == patternStr);
+                        if (pattern != null)
+                            ptzController.TriggerPattern(pattern);
+                    }
+                    else
+                    {
+                        Trace.WriteLineIf(_debugLevel > 0, "No PTZController, Unable to call Pattern " + patternStr);
+                    }
                 }
             }
-            else
+            catch
             {
-                Trace.WriteLineIf(_debugLevel > 0, "POS Alarm 1 not found in alarm cfg xml.");
+                Trace.WriteLineIf(_debugLevel > 0, "Exception, Unable to call Pattern " + patternStr);
             }
         }
 
-        private void InjectPOSEvent(vxSituation situation, string sourceDeviceId, string posData, bool receiptComplete)
+        private void CreateBookmark(int camera, string description)
         {
-            //found our enable sit in the Vx Situations.
-            CPPCli.NewEvent newEvent = new CPPCli.NewEvent();
-            newEvent.GeneratorDeviceId = _settings.IntegrationId;   // unique identifier for this integration
-            newEvent.SourceDeviceId = sourceDeviceId;
-            newEvent.SituationType = situation.Type;
-            newEvent.Time = DateTime.UtcNow;
-
-            List<KeyValuePair<string, string>> properties = new List<KeyValuePair<string, string>>();
-
-            // add POS data to properties
-            if (receiptComplete)
+            try
             {
-                KeyValuePair<string, string> kvpPOS = new KeyValuePair<string, string>("pos_data_complete", posData);
-                properties.Add(kvpPOS);
-                Trace.WriteLineIf(_debugLevel > 0, "Inject pos_data_complete: " + posData);
+                lock (_vxSystemLock)
+                {
+                    CPPCli.VXSystem system = GetVxSystem();
+                    if (system != null)
+                    {
+                        CPPCli.DataSource dataSource = GetCamera(camera);
+                        DateTime time = DateTime.Now;
+                        var newBookmark = new CPPCli.NewBookmark
+                        {
+                            Description = description,
+                            Time = time.ToUniversalTime(),
+                            DataSourceId = dataSource.Id
+                        };
+
+                        var result = system.CreateBookmark(newBookmark);
+                        if (result != CPPCli.Results.Value.OK)
+                        {
+                            Trace.WriteLineIf(_debugLevel > 0, "Unable to create BookMark for camera " + camera + " Result: " + result);
+                        }
+                    }
+
+                }
             }
-            else
+            catch (Exception e)
             {
-                KeyValuePair<string, string> kvpPOS = new KeyValuePair<string, string>("pos_data_line", posData);
-                properties.Add(kvpPOS);
-                Trace.WriteLineIf(_debugLevel > 0, "Inject pos_data_line: " + posData);
+                Trace.WriteLineIf(_debugLevel > 0, "Unable to create BookMark for camera " + camera + " Exception: " + e.Message);
             }
-
-            // add any other properties user wishes to add with event
-            foreach (SituationProperty prop in situation.properties)
-            {
-                KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(prop.Key, prop.Value);
-                properties.Add(kvp);
-            }
-
-            if (properties.Count > 0)
-                newEvent.Properties = properties;
-
-            ForwardEventToVx(newEvent);
         }
-#endregion
+
+        private CPPCli.Monitor.Layouts StringToMonitorLayout(string layoutStr)
+        {
+            switch (layoutStr.ToLower())
+            {
+                case "1x1":
+                    return CPPCli.Monitor.Layouts.CellLayout1x1;
+                case "1x2":
+                    return CPPCli.Monitor.Layouts.CellLayout1x2;
+                case "2x1":
+                    return CPPCli.Monitor.Layouts.CellLayout2x1;
+                case "2x2":
+                    return CPPCli.Monitor.Layouts.CellLayout2x2;
+                case "2x3":
+                    return CPPCli.Monitor.Layouts.CellLayout2x3;
+                case "3x2":
+                    return CPPCli.Monitor.Layouts.CellLayout3x2;
+                case "3x3":
+                    return CPPCli.Monitor.Layouts.CellLayout3x3;
+                case "4x3":
+                    return CPPCli.Monitor.Layouts.CellLayout4x3;
+                case "4x4":
+                    return CPPCli.Monitor.Layouts.CellLayout4x4;
+                case "1+12":
+                    return CPPCli.Monitor.Layouts.CellLayout1plus12;
+                case "2+8":
+                    return CPPCli.Monitor.Layouts.CellLayout2plus8;
+                case "3+4":
+                    return CPPCli.Monitor.Layouts.CellLayout3plus4;
+                case "1+5":
+                    return CPPCli.Monitor.Layouts.CellLayout1plus5;
+                case "1+7":
+                    return CPPCli.Monitor.Layouts.CellLayout1plus7;
+                case "12+1":
+                    return CPPCli.Monitor.Layouts.CellLayout12plus1;
+                case "8+2":
+                    return CPPCli.Monitor.Layouts.CellLayout8plus2;
+                case "1+4 (tall)":
+                    return CPPCli.Monitor.Layouts.CellLayout1plus4tall;
+                case "1+4 (wide)":
+                    return CPPCli.Monitor.Layouts.CellLayout1plus4wide;
+                default:
+                    return CPPCli.Monitor.Layouts.CellLayout2x2;
+            }
+        }
+        #endregion
     }
 }

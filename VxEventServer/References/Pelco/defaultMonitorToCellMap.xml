@@ -1,0 +1,35 @@
+﻿<!-- This example shows mapping ASCII Monitors 1 through 4 to Vx Monitor 1 cells 1,2,3,4 respectively -->
+<MonitorToCellMap>
+  <MonitorToCell>
+	<!-- Incoming Monitor from ASCII command -->
+	<ASCIIMonitor>1</ASCIIMonitor>
+	<!-- Vx Monitor to map ASCII monitor to -->
+	<VxMonitor>1</VxMonitor>
+	<!-- Vx Monitor Cell to map ASCII monitor to -->
+	<VxCell>1</VxCell>
+  </MonitorToCell>
+  <MonitorToCell>
+	<!-- Incoming Monitor from ASCII command -->
+	<ASCIIMonitor>2</ASCIIMonitor>
+	<!-- Vx Monitor to map ASCII monitor to -->
+	<VxMonitor>1</VxMonitor>
+	<!-- Vx Monitor Cell to map ASCII monitor to -->
+	<VxCell>2</VxCell>
+  </MonitorToCell>
+  <MonitorToCell>
+	<!-- Incoming Monitor from ASCII command -->
+	<ASCIIMonitor>3</ASCIIMonitor>
+	<!-- Vx Monitor to map ASCII monitor to -->
+	<VxMonitor>1</VxMonitor>
+	<!-- Vx Monitor Cell to map ASCII monitor to -->
+	<VxCell>3</VxCell>
+  </MonitorToCell>
+  <MonitorToCell>
+	<!-- Incoming Monitor from ASCII command -->
+	<ASCIIMonitor>4</ASCIIMonitor>
+	<!-- Vx Monitor to map ASCII monitor to -->
+	<VxMonitor>1</VxMonitor>
+	<!-- Vx Monitor Cell to map ASCII monitor to -->
+	<VxCell>4</VxCell>
+  </MonitorToCell>
+</MonitorToCellMap>

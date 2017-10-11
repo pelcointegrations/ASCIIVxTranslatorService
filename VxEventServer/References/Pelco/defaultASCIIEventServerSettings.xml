@@ -4,10 +4,10 @@
 	<VxCorePort></VxCorePort>
 	<VxUsername></VxUsername>
 	<VxPassword></VxPassword>
-	<IntegrationId></IntegrationId>
 	<EthernetSettings>
 		<Address></Address>
 		<Port>9999</Port>
+		<ConnectionType>UDP</ConnectionType>
 	</EthernetSettings>
 	<SerialPortSettings>
 		<PortName>COM1</PortName>

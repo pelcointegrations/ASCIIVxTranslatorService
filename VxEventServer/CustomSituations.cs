@@ -21,6 +21,7 @@ namespace ASCIIEvents
     public class CustomSituation
     {
         private string situationType = string.Empty;
+        private string sourceDeviceId = string.Empty;
         private string name = string.Empty;
         private int severity = 1;
         private bool log = false;
@@ -34,6 +35,12 @@ namespace ASCIIEvents
         {
             get { return situationType; }
             set { situationType = value; }
+        }
+
+        public string SourceDeviceId
+        {
+            get { return sourceDeviceId; }
+            set { sourceDeviceId = value; }
         }
 
         public string Name

@@ -19,7 +19,6 @@ namespace ASCIIEvents
         private string integrationId = "E024457E-B2A2-49B5-AE62-20816418650F"; // default IntegrationId
         private EthernetSettings ethernetSettings;
 		private SerialPortSettings serialPortSettings;
-        private POSSettings posSettings;
 
         public int DebugLevel
         {
@@ -111,19 +110,13 @@ namespace ASCIIEvents
             get { return serialPortSettings; }
             set { serialPortSettings = value; }
         }
-
-        [XmlElement("POSSettings")]
-        public POSSettings POSSettings
-        {
-            get { return posSettings; }
-            set { posSettings = value; }
-        }
     }
 
     public class EthernetSettings
     {
         private string address = string.Empty;
-        private int port = 0;
+        private string port = string.Empty;
+        private string connectionType = "UDP";
 
         public string Address
         {
@@ -131,10 +124,16 @@ namespace ASCIIEvents
             set { address = value; }
         }
 
-        public int Port
+        public string Port
         {
             get { return port; }
             set { port = value; }
+        }
+
+        public string ConnectionType
+        {
+            get { return connectionType; }
+            set { connectionType = value; }
         }
     }
 
@@ -175,49 +174,5 @@ namespace ASCIIEvents
             get { return stopBits; }
             set { stopBits = value; }
         }		
-    }
-
-    public class POSSettings
-    {
-        private static int maxAllowedReceiptLength = 2048 * 10;
-        private bool posMode = false;
-        private int maxReceiptLength = 2048; // default max receipt size
-        private string keyWord = string.Empty;
-        private string endDelimiter = string.Empty;
-        private string lineDelimiter = string.Empty;
-
-        public bool POSMode
-        {
-            get { return posMode; }
-            set { posMode = value; }
-        }
-
-        public int MaxReceiptLength
-        {
-            get { return maxReceiptLength; }
-            set
-            {
-                if (value <= maxAllowedReceiptLength)
-                    maxReceiptLength = value;
-                else maxReceiptLength = maxAllowedReceiptLength;
-            }
-        }
-
-        public string KeyWord
-        {
-            get { return keyWord; }
-            set { keyWord = value; }
-        }
-
-        public string EndDelimiter
-        {
-            get { return endDelimiter; }
-            set { endDelimiter = value; }
-        }
-        public string LineDelimiter
-        {
-            get { return lineDelimiter; }
-            set { lineDelimiter = value; }
-        }
     }
 }

@@ -1,6 +1,7 @@
 ﻿<CustomSituations>
   <CustomSituation>
 	<SituationType>external/ASCII/ASCIIAlarm_active</SituationType>
+	<SourceDeviceId></SourceDeviceId>
 	<Name>Ascii Alarm Active</Name>
 	<Severity>1</Severity>
 	<Log>1</Log>
@@ -12,6 +13,7 @@
   </CustomSituation>
   <CustomSituation>
 	<SituationType>external/ASCII/ASCIIAlarm_inactive</SituationType>
+	<SourceDeviceId></SourceDeviceId>
 	<Name>Ascii Alarm InActive</Name>
 	<Severity>1</Severity>
 	<Log>1</Log>

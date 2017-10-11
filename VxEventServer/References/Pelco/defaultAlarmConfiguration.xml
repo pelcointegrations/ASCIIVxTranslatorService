@@ -14,6 +14,8 @@
 			<Key>alarm_name</Key>
 			<Value>Alarm 1</Value>
 		</Property>
+		<ExecuteScript>1</ExecuteScript>
+		<ExecuteScript>2</ExecuteScript>
 	</Situation>
 	<Situation>
 		<AlarmState>0</AlarmState>
@@ -26,6 +28,7 @@
 			<Key>alarm_name</Key>
 			<Value>Alarm 1</Value>
 		</Property>
+		<ExecuteScript>-1</ExecuteScript>
 	</Situation>
   </Alarm>  
 </AlarmConfiguration>

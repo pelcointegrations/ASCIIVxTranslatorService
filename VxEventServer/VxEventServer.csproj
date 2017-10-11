@@ -40,6 +40,7 @@
     <WarningLevel>4</WarningLevel>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <Prefer32Bit>false</Prefer32Bit>
+    <PlatformTarget>x86</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'WcfMock|AnyCPU'">
     <DebugSymbols>true</DebugSymbols>
@@ -94,6 +95,8 @@
     <Compile Include="ASCIIEventServerSettings.cs" />
     <Compile Include="CustomSituations.cs" />
     <Compile Include="ASCIIEventHandler.cs" />
+    <Compile Include="ASCIIScripts.cs" />
+    <Compile Include="MonitorToCellMap.cs" />
     <Compile Include="VxEventServerManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -113,7 +116,7 @@ IF $(ConfigurationName) == Debug (
 )
 
 SET VXSDK=VxSdk%25D%25
-SET REST=cpprest140%25D%25_2_8
+SET REST=cpprest140%25D%25_2_9
 
 copy "$(ProjectDir)References\Pelco\$(Configuration)\CPPCli.dll" "$(TargetDir)CPPCli.dll"
 copy "$(ProjectDir)References\Pelco\$(Configuration)\%25VXSDK%25.dll" "$(TargetDir)%25VXSDK%25.dll"
@@ -123,6 +126,8 @@ copy "$(ProjectDir)References\Pelco\defaultCustomSituations.xml" "$(TargetDir)de
 copy "$(ProjectDir)References\Pelco\defaultASCIIEventServerSettings.xml" "$(TargetDir)defaultASCIIEventServerSettings.xml"
 copy "$(ProjectDir)References\Pelco\defaultASCIICommandConfiguration.xml" "$(TargetDir)defaultASCIICommandConfiguration.xml"
 copy "$(ProjectDir)References\Pelco\defaultAlarmConfiguration.xml" "$(TargetDir)defaultAlarmConfiguration.xml"
+copy "$(ProjectDir)References\Pelco\defaultASCIIScripts.xml" "$(TargetDir)defaultASCIIScripts.xml"
+copy "$(ProjectDir)References\Pelco\defaultMonitorToCellMap.xml" "$(TargetDir)defaultMonitorToCellMap.xml"
 </PostBuildEvent>
     <PreBuildEvent>
     </PreBuildEvent>

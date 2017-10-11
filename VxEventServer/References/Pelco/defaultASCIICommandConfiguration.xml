@@ -1,6 +1,13 @@
 <ASCIICommandConfiguration>
 	<Commands>
 		<Command>
+			<!-- returns simple acknowledgement of receiving this message -->
+			<!-- Response for Ack must be defined below in Response section of this document -->
+			<Name>KeepAlive</Name>
+			<Value>v</Value>
+			<Delimiter>a</Delimiter>
+		</Command>
+		<Command>
 			<!-- Selects Monitor that commands will be addressing -->
 			<Name>SelectMonitor</Name>
 			<Value>M</Value>
@@ -98,21 +105,16 @@
 			<Parameter>
 				<Type>int</Type>
 				<Min>1</Min>
-				<Max>14</Max>
+				<Max>18</Max>
 				<Position>before</Position>
 			</Parameter>			
 		</Command>		
 		<Command>
-			<!-- selects Camera defined by param and plays at speed 1 (live)-->
+			<!-- plays selected camera at speed 1 (live) -->
+			<!-- Note: &gt is escaped XML for a greater than symbols -->
 			<Name>Play</Name>
 			<Value>&gt;</Value>
 			<Delimiter>m</Delimiter>
-			<Parameter>
-				<Type>int</Type>
-				<Min>1</Min>
-				<Max>65536</Max>
-				<Position>before</Position>
-			</Parameter>			
 		</Command>
 		<Command>
 			<!-- Stops video on selected Cell of selected Monitor -->
@@ -125,34 +127,30 @@
 			<Name>Pause</Name>
 			<Value>e</Value>
 			<Delimiter>m</Delimiter>
-			<Parameter>
-				<Type>int</Type>
-				<Min>1</Min>
-				<Max>65536</Max>
-				<Position>before</Position>
-			</Parameter>			
 		</Command>
 		<Command>
 			<!-- Changes play speed to param on selected Cell of selected Monitor -->
+			<!-- Note: &gt;&gt is escaped XML for two greater than symbols -->
 			<Name>FastForward</Name>
 			<Value>&gt;&gt;</Value>
 			<Delimiter>m</Delimiter>
 			<Parameter>
 				<Type>int</Type>
 				<Min>1</Min>
-				<Max>65536</Max>
+				<Max>128</Max>
 				<Position>before</Position>
 			</Parameter>			
 		</Command>		
 		<Command>
 			<!-- Changes play speed to -param on selected Cell of selected Monitor -->
+			<!-- Note: &lt;&lt is escaped XML for two less than symbols -->
 			<Name>Rewind</Name>
 			<Value>&lt;&lt;</Value>
 			<Delimiter>m</Delimiter>
 			<Parameter>
 				<Type>int</Type>
 				<Min>1</Min>
-				<Max>65536</Max>
+				<Max>128</Max>
 				<Position>before</Position>
 			</Parameter>			
 		</Command>
@@ -324,4 +322,10 @@
 			</Parameter>			
 		</Command>
 	</Commands>
+	<Response>
+		<!-- to require an ACK set to string value, i.e "AKa" -->
+		<Ack></Ack>
+		<!-- to require an NAK set to string value, i.e "NAa" -->
+		<Nack></Nack>
+	</Response>
 </ASCIICommandConfiguration>

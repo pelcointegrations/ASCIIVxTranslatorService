@@ -32,11 +32,13 @@ Global
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Debug|x86.Build.0 = Debug|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Release|x86.ActiveCfg = Release|Any CPU
+		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.Release|x86.Build.0 = Release|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.WcfMock|Any CPU.ActiveCfg = WcfMock|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.WcfMock|Any CPU.Build.0 = WcfMock|Any CPU
 		{C369F449-EE6A-402C-96AB-01E3C185CC1D}.WcfMock|Mixed Platforms.ActiveCfg = WcfMock|Any CPU
@@ -53,6 +55,7 @@ Global
 		{FB1A6C1C-E030-45C6-A821-0F17C42D2457}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
 		{FB1A6C1C-E030-45C6-A821-0F17C42D2457}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{FB1A6C1C-E030-45C6-A821-0F17C42D2457}.Release|x86.ActiveCfg = Release|Any CPU
+		{FB1A6C1C-E030-45C6-A821-0F17C42D2457}.Release|x86.Build.0 = Release|Any CPU
 		{FB1A6C1C-E030-45C6-A821-0F17C42D2457}.WcfMock|Any CPU.ActiveCfg = WcfMock|Any CPU
 		{FB1A6C1C-E030-45C6-A821-0F17C42D2457}.WcfMock|Any CPU.Build.0 = WcfMock|Any CPU
 		{FB1A6C1C-E030-45C6-A821-0F17C42D2457}.WcfMock|Mixed Platforms.ActiveCfg = WcfMock|Any CPU
